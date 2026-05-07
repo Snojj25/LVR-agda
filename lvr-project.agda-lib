@@ -1,0 +1,3 @@
+name: lvr-project
+include: src
+depend: standard-library
