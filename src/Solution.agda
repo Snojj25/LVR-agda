@@ -24,7 +24,9 @@ open import Data.List
 open import Data.Product
   using (_×_; _,_)
 open import Relation.Nullary
-  using (yes; no)
+  using (Dec; yes; no)
+open import Relation.Binary.PropositionalEquality
+  using (_≡_; refl)
 
 
 ------------------------------------------------------------
@@ -100,46 +102,110 @@ to-nnf = nnf⁺
 
 
 ------------------------------------------------------------
--- Problem 4.  Assoc  (a partial map  ℕ → Bool)
+-- Problem 4.  Assoc  (week-9 `AssocList` module, completed)
 ------------------------------------------------------------
 --
--- The project explicitly allows specialising K = ℕ and V = Bool,
--- so we implement Assoc as a list of (ℕ , Bool)-pairs with
--- *first-match-wins* lookup semantics.  The bare list lets later
--- entries simply shadow earlier ones, so insert never has to do
--- any work to maintain an invariant.
+-- We follow `Ex9.agda` literally: a `DecType` record packages
+-- a carrier `Set` with a decidable equality, and `AssocList`
+-- is parametric in `(K : DecType) (V : Set)`.  Every hole from
+-- Ex9 is filled below.
 --
--- A natural strengthening is to attach the predicate
---    NoDup : List Pair → Set
--- ensuring that no two entries share a key — this is what the
--- week-9 exercises pursue.  We discuss that version (and the
--- All / Any predicates from the standard library that justify it)
--- in  notes/04-assoc.md ;  the bare list below is enough for
--- everything Problems 5–10 ask for.
+-- To recover the project's `open Assoc ℕ test-≡ Bool` shape we
+-- instantiate with `K = 𝒩` and `V = Bool` and re-export the
+-- module's `Assoc` type as `Assignment`.
 
--- The Assoc data type, already specialised.  Reading
---   open Assoc ℕ test-≡ Bool
--- in the project's notation is equivalent to working in this module.
-Assoc : Set
-Assoc = List (ℕ × Bool)
+record DecType : Set₁ where
+  field
+    carr   : Set
+    test-≡ : (x y : carr) → Dec (x ≡ y)
+open DecType
 
-empty : Assoc
-empty = []
+---------------
+-- copied from Ex9.agda (Exercise 7): AssocList interface
+---------------
+module AssocList (K : DecType) (V : Set) where
 
--- Insert (or shadow) a binding.
-insert : ℕ → Bool → Assoc → Assoc
-insert k v ρ = (k , v) ∷ ρ
+  Assoc : Set
+  Assoc = List (carr K × V)
 
--- Look up the first binding of k (if any).
-lookup : ℕ → Assoc → Maybe Bool
-lookup k []                = nothing
-lookup k ((k′ , v) ∷ ρ)    with k ≟ k′
-... | yes _ = just v
-... | no  _ = lookup k ρ
+  {- Elementhood relation -}
+  infix 4 _∈_
+  -- ------my code----
+  data _∈_ : carr K → Assoc → Set where
+    here  : ∀ {k v kvs}     → k ∈ ((k  , v ) ∷ kvs)
+    there : ∀ {k k′ v′ kvs} → k ∈ kvs → k ∈ ((k′ , v′) ∷ kvs)
+  -- ------my code----
 
--- Project's stated signature.
+  {- Safe lookup -}
+  lookup : {k : carr K} {kvs : Assoc} → k ∈ kvs → V
+  -- ------my code----
+  lookup {kvs = (_ , v) ∷ _}   here      = v
+  lookup {kvs = (_ , _) ∷ kvs} (there p) = lookup {kvs = kvs} p
+  -- ------my code----
+
+  {- The decidability of the elementhood relation -}
+  infix 4 _∈?_
+  _∈?_ : (k : carr K) → (kvs : Assoc) → Dec (k ∈ kvs)
+  -- ------my code----
+  k ∈? [] = no (λ ())
+  k ∈? ((k′ , _) ∷ kvs) with test-≡ K k k′
+  ... | yes refl = yes here
+  ... | no  k≢k′ with k ∈? kvs
+  ...   | yes p  = yes (there p)
+  ...   | no  ¬p = no λ where
+            here      → k≢k′ refl
+            (there q) → ¬p q
+  -- ------my code----
+
+  {- Lookup returning a maybe -}
+  infixl 9 _‼_
+  _‼_ : (kvs : Assoc) → (k : carr K) → Maybe V
+  -- ------my code----
+  kvs ‼ k with k ∈? kvs
+  ... | yes p = just (lookup p)
+  ... | no  _ = nothing
+  -- ------my code----
+
+  {-
+     Update value
+
+     Note: Here if `k` is not in `kvs` we append it to the front, otherwise we
+     step into `kvs` and replace the odl value with the new value.
+  -}
+  infixl 8 _[_]≔_
+  _[_]≔_ : Assoc → carr K → V → Assoc
+  -- ------my code----
+  []                [ k ]≔ v = (k , v) ∷ []
+  ((k′ , v′) ∷ kvs) [ k ]≔ v with test-≡ K k k′
+  ... | yes _ = (k  , v ) ∷ kvs
+  ... | no  _ = (k′ , v′) ∷ (kvs [ k ]≔ v)
+  -- ------my code----
+
+------------------------------------------------------------
+-- ℕ as a `DecType`, and the project-style instantiation.
+------------------------------------------------------------
+
+---------------
+-- additional project glue (instantiation for Problem 4)
+---------------
+𝒩 : DecType
+carr   𝒩 = ℕ
+test-≡ 𝒩 = _≟_
+
+open AssocList 𝒩 Bool public hiding (lookup)
+
 Assignment : Set
 Assignment = Assoc
+
+-- Convenience wrappers used by Problems 5–10.
+empty : Assignment
+empty = []
+
+insert : ℕ → Bool → Assignment → Assignment
+insert k v ρ = ρ [ k ]≔ v
+
+lookup : ℕ → Assignment → Maybe Bool
+lookup k ρ = ρ ‼ k
 
 
 ------------------------------------------------------------
