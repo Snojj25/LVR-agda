@@ -13,7 +13,7 @@ module Solution where
 ------------------------------------------------------------
 
 open import Data.Nat
-  using (ℕ; suc; _≟_; _⊔_)
+  using (ℕ; _≟_)
 open import Data.Bool
   using (Bool; true; false; not)
   renaming (_∧_ to _and_; _∨_ to _or_)
@@ -23,8 +23,14 @@ open import Data.List
   using (List; []; _∷_; _++_)
 open import Data.Product
   using (_×_; _,_)
+open import Data.Sum
+  using (_⊎_; inj₁; inj₂)
+open import Data.Empty
+  using (⊥)
 open import Relation.Nullary
-  using (yes; no)
+  using (Dec; yes; no; ¬_)
+open import Relation.Binary.PropositionalEquality
+  using (_≡_; refl)
 
 
 ------------------------------------------------------------
@@ -103,43 +109,66 @@ to-nnf = nnf⁺
 -- Problem 4.  Assoc  (a partial map  ℕ → Bool)
 ------------------------------------------------------------
 --
--- The project explicitly allows specialising K = ℕ and V = Bool,
--- so we implement Assoc as a list of (ℕ , Bool)-pairs with
--- *first-match-wins* lookup semantics.  The bare list lets later
--- entries simply shadow earlier ones, so insert never has to do
--- any work to maintain an invariant.
+-- We take the week-9 Assoc scaffolding and complete it,
+-- specialising to  K = ℕ ,  V = Bool .  The carrier is a plain
+-- association list; membership is defined by recursion as
 --
--- A natural strengthening is to attach the predicate
---    NoDup : List Pair → Set
--- ensuring that no two entries share a key — this is what the
--- week-9 exercises pursue.  We discuss that version (and the
--- All / Any predicates from the standard library that justify it)
--- in  notes/04-assoc.md ;  the bare list below is enough for
--- everything Problems 5–10 ask for.
+--     k ∈ᴬ []                =  ⊥
+--     k ∈ᴬ ((k′ , _) ∷ kvs)  =  (k ≡ k′)  ⊎  (k ∈ᴬ kvs)
+--
+-- — at the empty list there is no proof; at a cons either the head's
+-- key matches or `k` is in the tail.  This recursive encoding has the
+-- same content as an inductive  `here / there`  datatype but stays in
+-- the standard  ⊥ / ⊎  vocabulary.
+--
+-- `insert` does in-place update: it walks the list, replacing an
+-- existing binding for `k` if any, or appending otherwise.  Starting
+-- from `empty = []` and only modifying through `insert`, the list
+-- behaviourally has no duplicate keys, so `lookup` is deterministic.
 
--- The Assoc data type, already specialised.  Reading
---   open Assoc ℕ test-≡ Bool
--- in the project's notation is equivalent to working in this module.
-Assoc : Set
-Assoc = List (ℕ × Bool)
+infix 4 _∈ᴬ_
 
-empty : Assoc
+-- Membership of a key in an entry list.
+_∈ᴬ_ : ℕ → List (ℕ × Bool) → Set
+k ∈ᴬ []               = ⊥
+k ∈ᴬ ((k′ , _) ∷ kvs) = (k ≡ k′) ⊎ (k ∈ᴬ kvs)
+ 
+-- Value associated with a key, given a membership witness.
+get : {k : ℕ} {kvs : List (ℕ × Bool)} → k ∈ᴬ kvs → Bool
+get {kvs = []}              ()
+get {kvs = (_ , v) ∷ _}     (inj₁ _) = v
+get {kvs = (_ , _) ∷ kvs}   (inj₂ p) = get p
+
+-- Decide membership — lifts  _≟_  on ℕ.
+_∈ᴬ?_ : (k : ℕ) → (kvs : List (ℕ × Bool)) → Dec (k ∈ᴬ kvs)
+k ∈ᴬ? []                = no λ ()
+k ∈ᴬ? ((k′ , _) ∷ kvs)  with k ≟ k′
+... | yes refl = yes (inj₁ refl)  -- head matches
+... | no  k≢k′ with k ∈ᴬ? kvs  
+...   | yes p     = yes (inj₂ p)  -- tail matches
+...   | no  k∉kvs = no λ { (inj₁ p) → k≢k′ p
+                         ; (inj₂ p) → k∉kvs p }
+
+-- The carrier.
+Assignment : Set
+Assignment = List (ℕ × Bool)
+
+-- The empty assignment.
+empty : Assignment
 empty = []
 
--- Insert (or shadow) a binding.
-insert : ℕ → Bool → Assoc → Assoc
-insert k v ρ = (k , v) ∷ ρ
+-- Maybe-typed lookup, the function used by the evaluators.
+lookup : ℕ → Assignment → Maybe Bool
+lookup k ρ with k ∈ᴬ? ρ
+... | yes p = just (get p)
+... | no  _ = nothing
 
--- Look up the first binding of k (if any).
-lookup : ℕ → Assoc → Maybe Bool
-lookup k []                = nothing
-lookup k ((k′ , v) ∷ ρ)    with k ≟ k′
-... | yes _ = just v
-... | no  _ = lookup k ρ
-
--- Project's stated signature.
-Assignment : Set
-Assignment = Assoc
+-- Insert: replace existing binding for `k`, or append if not present.
+insert : ℕ → Bool → Assignment → Assignment
+insert k v []                = (k , v) ∷ []
+insert k v ((k′ , v′) ∷ ρ)   with k ≟ k′
+... | yes _ = (k , v) ∷ ρ
+... | no  _ = (k′ , v′) ∷ insert k v ρ
 
 
 ------------------------------------------------------------
@@ -254,25 +283,14 @@ cnf-vars : CNF → List ℕ
 cnf-vars (dis d)   = dis-vars d
 cnf-vars (d ∧c φ)  = dis-vars d ++ cnf-vars φ
 
--- Membership test on a list of ℕ, used to deduplicate.
-mem? : ℕ → List ℕ → Bool
-mem? _ []        = false
-mem? n (m ∷ ms)  with n ≟ m
-... | yes _ = true
-... | no  _ = mem? n ms
-
-dedup : List ℕ → List ℕ
-dedup []        = []
-dedup (n ∷ ns)  with mem? n (dedup ns)
-... | true  = dedup ns
-... | false = n ∷ dedup ns
-
--- Brute-force / splitting-rule search.
+-- Splitting-rule search.
 --
 --   sat-search vs ρ φ  =  true   iff some extension of ρ that
 --                                  assigns every v ∈ vs makes φ true.
 --
--- Termination is by structural recursion on the list  vs .
+-- Termination is by structural recursion on the list  vs .  Duplicate
+-- entries in  vs  cause re-branching on the same variable, which is
+-- wasteful but harmless: `insert` replaces the previous binding.
 
 sat-search : List ℕ → Assignment → CNF → Bool
 sat-search [] ρ φ with eval-cnf ρ φ
@@ -283,83 +301,53 @@ sat-search (v ∷ vs) ρ φ =
    or sat-search vs (insert v false ρ) φ
 
 sat? : CNF → Bool
-sat? φ = sat-search (dedup (cnf-vars φ)) empty φ
+sat? φ = sat-search (cnf-vars φ) empty φ
 
 
 ------------------------------------------------------------
--- Problem 10.  Tseytin transformation  NNF → CNF
+-- Problem 10.  NNF → CNF  (naive distribution)
 ------------------------------------------------------------
 --
--- We give the standard Tseytin transformation: for every internal
--- node of the NNF we introduce a fresh variable  x  representing
--- "the value of this subformula" and add 2 or 3 clauses encoding
+-- We push ∨ underneath ∧ using the distributive law
 --
---      x  ↔  l_a  ∧/∨  l_b   .
+--     a ∨ (b ∧ c)  ≡  (a ∨ b) ∧ (a ∨ c) .
 --
--- The result is *equisatisfiable* (not equivalent) to the input
--- but its size is linear in |φ|, whereas naive distribution can
--- explode exponentially.
---
--- Convention used below: tseytin-aux returns a triple
---    (next , top , clauses)
--- where  next  is the next unused variable index,  top  is the
--- literal representing the value of the whole subformula, and
--- clauses are the CNF constraints accumulated so far.
+-- This is *equivalence-preserving* (in particular,
+-- equisatisfiability-preserving, which is what the project asks for).
+-- The trade-off is that the output can be exponentially larger than
+-- the input — a sharper Tseytin-style transformation would avoid the
+-- blow-up at the cost of introducing fresh variables and only
+-- preserving equisatisfiability.  For the project's grammar and
+-- sized inputs this simpler version is fine.
 
--- Negation of a literal.
-flip : Literal → Literal
-flip (pos n) = neg n
-flip (neg n) = pos n
+-- Disjunct ∨ Disjunct: append two clauses' literal lists.
+_∨d++_ : Disjunct → Disjunct → Disjunct
+lit ℓ    ∨d++ d = ℓ ∨d d
+(ℓ ∨d e) ∨d++ d = ℓ ∨d (e ∨d++ d)
 
--- Largest variable index in an NNF (so  suc max-var  is always fresh).
-max-var : NNF → ℕ
-max-var (lit (pos n)) = n
-max-var (lit (neg n)) = n
-max-var (a ∧n b)      = max-var a ⊔ max-var b
-max-var (a ∨n b)      = max-var a ⊔ max-var b
+infixr 6 _∨d++_
 
--- Build a Disjunct out of a head literal and a list of tail literals.
-disjunct-of : Literal → List Literal → Disjunct
-disjunct-of ℓ []        = lit ℓ
-disjunct-of ℓ (m ∷ ms)  = ℓ ∨d disjunct-of m ms
+-- CNF ∧ CNF: append two clause lists.
+_∧c++_ : CNF → CNF → CNF
+dis d    ∧c++ c′ = d ∧c c′
+(d ∧c c) ∧c++ c′ = d ∧c (c ∧c++ c′)
 
--- Glue a list of disjuncts into a CNF (with at least one disjunct).
-cnf-of : Disjunct → List Disjunct → CNF
-cnf-of d []        = dis d
-cnf-of d (e ∷ es)  = d ∧c cnf-of e es
+infixr 7 _∧c++_
 
--- The core recursion.
-tseytin-aux : ℕ → NNF → ℕ × Literal × List Disjunct
-tseytin-aux n (lit ℓ) = n , ℓ , []
-tseytin-aux n (a ∧n b) with tseytin-aux n a
-... | n₁ , la , cs₁ with tseytin-aux n₁ b
-...   | n₂ , lb , cs₂ =
-            let x   = n₂
-                n₃  = suc n₂
-                -- x ↔ (la ∧ lb) :
-                --   ¬x ∨ la            (x ⇒ la)
-                --   ¬x ∨ lb            (x ⇒ lb)
-                --   ¬la ∨ ¬lb ∨ x      (la ∧ lb ⇒ x)
-                c₁ = disjunct-of (neg x) (la ∷ [])
-                c₂ = disjunct-of (neg x) (lb ∷ [])
-                c₃ = disjunct-of (flip la) (flip lb ∷ pos x ∷ [])
-            in n₃ , pos x , c₁ ∷ c₂ ∷ c₃ ∷ cs₁ ++ cs₂
-tseytin-aux n (a ∨n b) with tseytin-aux n a
-... | n₁ , la , cs₁ with tseytin-aux n₁ b
-...   | n₂ , lb , cs₂ =
-            let x   = n₂
-                n₃  = suc n₂
-                -- x ↔ (la ∨ lb) :
-                --   ¬x ∨ la ∨ lb       (x ⇒ la ∨ lb)
-                --   ¬la ∨ x            (la ⇒ x)
-                --   ¬lb ∨ x            (lb ⇒ x)
-                c₁ = disjunct-of (neg x) (la ∷ lb ∷ [])
-                c₂ = disjunct-of (flip la) (pos x ∷ [])
-                c₃ = disjunct-of (flip lb) (pos x ∷ [])
-            in n₃ , pos x , c₁ ∷ c₂ ∷ c₃ ∷ cs₁ ++ cs₂
+-- Distribute a single clause across a CNF:
+--   D ∨ (c₁ ∧ … ∧ cₙ)  ≡  (D ∨ c₁) ∧ … ∧ (D ∨ cₙ)
+distrib-l : Disjunct → CNF → CNF
+distrib-l D (dis e)   = dis (D ∨d++ e)
+distrib-l D (e ∧c c)  = (D ∨d++ e) ∧c distrib-l D c
 
--- Top-level Tseytin: produce a CNF asserting that the top
--- representative literal is true.
-tseytin : NNF → CNF
-tseytin φ with tseytin-aux (suc (max-var φ)) φ
-... | _ , top , cs = cnf-of (lit top) cs
+-- Distribute two CNFs:
+--   (c₁ ∧ … ∧ cₙ) ∨ (c′₁ ∧ … ∧ c′ₘ)
+distrib : CNF → CNF → CNF
+distrib (dis D)  c′ = distrib-l D c′
+distrib (D ∧c c) c′ = distrib-l D c′ ∧c++ distrib c c′
+
+-- Top-level conversion.
+to-cnf : NNF → CNF
+to-cnf (lit ℓ)   = dis (lit ℓ)
+to-cnf (a ∧n b)  = to-cnf a ∧c++ to-cnf b
+to-cnf (a ∨n b)  = distrib (to-cnf a) (to-cnf b)
