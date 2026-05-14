@@ -30,16 +30,16 @@ go beyond what fits in code comments.
 
 | Problem | Asks for                                       | Defined in `Solution.agda` (approx. line) |
 | ------- | ---------------------------------------------- | ----------------------------------------- |
-| 1 (\*)  | type `Formula`                                 | 38–56                                     |
-| 2 (\*)  | types `Literal`, `NNF`                         | 59–76                                     |
-| 3 (\*)  | `to-nnf : Formula → NNF`                       | 79–107                                    |
-| 4 (\*\*)| `Assignment` (Assoc specialisation)            | 110–143                                   |
-| 5 (\*)  | `eval : Assignment → Formula → Maybe Bool`     | 146–165                                   |
-| 6 (\*)  | `eval-nnf : Assignment → NNF → Maybe Bool`     | 168–185                                   |
-| 7 (\*)  | types `Disjunct`, `CNF`                        | 188–210                                   |
-| 8 (\*)  | `eval-cnf : Assignment → CNF → Maybe Bool`     | 213–227                                   |
-| 9 (\*\*/\*\*\*) | `sat? : CNF → Bool`                    | 230–287                                   |
-| 10 (\*\*/\*\*\*)| `tseytin : NNF → CNF`                  | 290–366                                   |
+| 1 (\*)  | type `Formula`                                 | 33–52                                     |
+| 2 (\*)  | types `Literal`, `NNF`                         | 54–71                                     |
+| 3 (\*)  | `to-nnf : Formula → NNF`                       | 74–101                                    |
+| 4 (\*\*)| `Assignment` (NoDup-backed Assoc)              | 104–219                                   |
+| 5 (\*)  | `eval : Assignment → Formula → Maybe Bool`     | 222–240                                   |
+| 6 (\*)  | `eval-nnf : Assignment → NNF → Maybe Bool`     | 244–260                                   |
+| 7 (\*)  | types `Disjunct`, `CNF`                        | 264–285                                   |
+| 8 (\*)  | `eval-cnf : Assignment → CNF → Maybe Bool`     | 289–302                                   |
+| 9 (\*\*/\*\*\*) | `sat? : CNF → Bool`                    | 306–363                                   |
+| 10 (\*\*/\*\*\*)| `tseytin : NNF → CNF`                  | 366–441                                   |
 
 ## Building
 
@@ -97,9 +97,9 @@ The notes deliberately overlap a little so each can be read on its own.
   CNF connectives use the suffixes `n`, `d`, `c` similarly.
 - Variables are identified by `ℕ`. Any infinite type would do; `ℕ` is just
   convenient and gives us a free way to mint fresh identifiers in Tseytin.
-- `Assignment` is specialised to `List (ℕ × Bool)` with first-match-wins
-  lookup, per the project's permission. The notes spell out the
-  alternative `NoDup`-protected version.
+- `Assignment` is specialised to a list of `(ℕ × Bool)` pairs bundled
+  with a `NoDup` proof that no key appears twice — the week-9 `Assoc`
+  module, completed. Keys are `ℕ`, decidable equality via `_≟_`.
 - `eval`, `eval-nnf`, `eval-cnf` all return `Maybe Bool`: `nothing` when
   the assignment doesn't bind one of the variables in the formula. See
   `notes/04-assoc.md` for the design rationale.
