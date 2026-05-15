@@ -1,16 +1,6 @@
-------------------------------------------------------------
--- Logika v Računalništvu — Project Solution
---
--- Solves Problems 1–10 of the project.
--- All ten problems are answered in this single file, in order.
--- Companion explanations live under  notes/ .
-------------------------------------------------------------
-
 module Solution where
 
-------------------------------------------------------------
--- Imports from the Agda standard library
-------------------------------------------------------------
+-- Imports
 
 open import Data.Nat
   using (ℕ; _≟_)
@@ -32,16 +22,8 @@ open import Relation.Nullary
 open import Relation.Binary.PropositionalEquality
   using (_≡_; refl)
 
-
-------------------------------------------------------------
--- Problem 1.  Formula
-------------------------------------------------------------
---
--- Inductive type implementing the grammar
---    Formula → Var n | ¬ Formula | Formula ∧ Formula | Formula ∨ Formula
---
--- We use the constructors  var , ¬f_ , _∧f_ , _∨f_  to avoid
--- clashing with the homonymous operators on Bool.
+---------------------------------------------------------------------
+-- Problem 1: Definiramo Formula type
 
 data Formula : Set where
   var  : ℕ → Formula
@@ -53,17 +35,13 @@ infix  9 ¬f_
 infixr 7 _∧f_
 infixr 6 _∨f_
 
-
-------------------------------------------------------------
--- Problem 2.  NNF (Negation Normal Form)
-------------------------------------------------------------
---
--- A literal is either a variable (positive) or a negated variable
--- (negative); negation appears nowhere else in an NNF formula.
+---------------------------------------------------------------------
+-- Problem 2. Definramo literal, Iz tega sestavimo
+-- definicijo NNF (Negation Normal Form)
 
 data Literal : Set where
-  pos : ℕ → Literal     -- the literal  Var n
-  neg : ℕ → Literal     -- the literal  ¬ Var n
+  pos : ℕ → Literal     
+  neg : ℕ → Literal     
 
 data NNF : Set where
   lit  : Literal → NNF
@@ -73,20 +51,12 @@ data NNF : Set where
 infixr 7 _∧n_
 infixr 6 _∨n_
 
-
-------------------------------------------------------------
--- Problem 3.  Conversion  Formula → NNF
-------------------------------------------------------------
---
--- We push every ¬ down to the variables using De Morgan's laws
--- and ¬¬φ ≡ φ.  To make the recursion structurally obvious (and so
--- it is accepted by Agda's termination checker) we define two
--- mutually-recursive helpers:
---
---    nnf⁺ φ   produces an NNF equivalent to     φ
---    nnf⁻ φ   produces an NNF equivalent to    ¬ φ
---
--- Both recurse only on strictly smaller sub-formulas.
+---------------------------------------------------------------------
+-- Problem 3. Pretvorba Formula → NNF (to-nnf)
+-- negacijo "potisnemo" navzdol z De Morganovimi zakoni
+-- in ¬¬φ ≡ φ. ne pišemo ene velike to-nnf, ampak dve funkciji:
+--   nnf⁺ φ  ≈  pretvori φ    nnf⁻ φ  ≈  pretvori ¬φ
+-- Končna funkcija je to-nnf = nnf⁺.
 
 nnf⁺ : Formula → NNF
 nnf⁻ : Formula → NNF
@@ -97,88 +67,62 @@ nnf⁺ (a ∧f b)  = nnf⁺ a ∧n nnf⁺ b
 nnf⁺ (a ∨f b)  = nnf⁺ a ∨n nnf⁺ b
 
 nnf⁻ (var n)   = lit (neg n)
-nnf⁻ (¬f φ)    = nnf⁺ φ                 -- ¬¬φ ≡ φ
-nnf⁻ (a ∧f b)  = nnf⁻ a ∨n nnf⁻ b       -- ¬(a∧b) ≡ ¬a ∨ ¬b
-nnf⁻ (a ∨f b)  = nnf⁻ a ∧n nnf⁻ b       -- ¬(a∨b) ≡ ¬a ∧ ¬b
+nnf⁻ (¬f φ)    = nnf⁺ φ               -- dvojna negacija
+nnf⁻ (a ∧f b)  = nnf⁻ a ∨n nnf⁻ b       -- De Morgan: ¬(a∧b)
+nnf⁻ (a ∨f b)  = nnf⁻ a ∧n nnf⁻ b        -- De Morgan: ¬(a∨b)
 
 to-nnf : Formula → NNF
 to-nnf = nnf⁺
 
-
-------------------------------------------------------------
--- Problem 4.  Assoc  (a partial map  ℕ → Bool)
-------------------------------------------------------------
---
--- We take the week-9 Assoc scaffolding and complete it,
--- specialising to  K = ℕ ,  V = Bool .  The carrier is a plain
--- association list; membership is defined by recursion as
---
---     k ∈ᴬ []                =  ⊥
---     k ∈ᴬ ((k′ , _) ∷ kvs)  =  (k ≡ k′)  ⊎  (k ∈ᴬ kvs)
---
--- — at the empty list there is no proof; at a cons either the head's
--- key matches or `k` is in the tail.  This recursive encoding has the
--- same content as an inductive  `here / there`  datatype but stays in
--- the standard  ⊥ / ⊎  vocabulary.
---
--- `insert` does in-place update: it walks the list, replacing an
--- existing binding for `k` if any, or appending otherwise.  Starting
--- from `empty = []` and only modifying through `insert`, the list
--- behaviourally has no duplicate keys, so `lookup` is deterministic.
+---------------------------------------------------------------------
+-- Problem 4. 
 
 infix 4 _∈ᴬ_
 
--- Membership of a key in an entry list.
+-- "rekurzivna definicija" za _∈ᴬ_ s pomočjo sum type 
+-- (kaj pomeni biti v Listu (ℕ × Bool)?)
 _∈ᴬ_ : ℕ → List (ℕ × Bool) → Set
 k ∈ᴬ []               = ⊥
 k ∈ᴬ ((k′ , _) ∷ kvs) = (k ≡ k′) ⊎ (k ∈ᴬ kvs)
- 
--- Value associated with a key, given a membership witness.
+
+-- Iz dokaza članstva preberi shranjen true/false
 get : {k : ℕ} {kvs : List (ℕ × Bool)} → k ∈ᴬ kvs → Bool
 get {kvs = []}              ()
-get {kvs = (_ , v) ∷ _}     (inj₁ _) = v
-get {kvs = (_ , _) ∷ kvs}   (inj₂ p) = get p
+get {kvs = (_ , v) ∷ _}     (inj₁ _) = v      -- najden na začetku
+get {kvs = (_ , _) ∷ kvs}   (inj₂ p) = get p  -- najden v repu
 
--- Decide membership — lifts  _≟_  on ℕ.
+-- Odloči članstvo in vrni dokaz (yes) ali dokaz da ni (no)
 _∈ᴬ?_ : (k : ℕ) → (kvs : List (ℕ × Bool)) → Dec (k ∈ᴬ kvs)
 k ∈ᴬ? []                = no λ ()
 k ∈ᴬ? ((k′ , _) ∷ kvs)  with k ≟ k′
-... | yes refl = yes (inj₁ refl)  -- head matches
-... | no  k≢k′ with k ∈ᴬ? kvs  
-...   | yes p     = yes (inj₂ p)  -- tail matches
+... | yes refl = yes (inj₁ refl)
+... | no  k≢k′ with k ∈ᴬ? kvs
+...   | yes p     = yes (inj₂ p)
 ...   | no  k∉kvs = no λ { (inj₁ p) → k≢k′ p
                          ; (inj₂ p) → k∉kvs p }
 
--- The carrier.
+-- Assignment = seznam parov (številka spremenljivke, true/false)
 Assignment : Set
 Assignment = List (ℕ × Bool)
 
--- The empty assignment.
 empty : Assignment
 empty = []
 
--- Maybe-typed lookup, the function used by the evaluators.
+-- lookup: če je k v ρ, just vrednost; sicer nothing
 lookup : ℕ → Assignment → Maybe Bool
 lookup k ρ with k ∈ᴬ? ρ
 ... | yes p = just (get p)
 ... | no  _ = nothing
 
--- Insert: replace existing binding for `k`, or append if not present.
+-- insert: posodobi obstoječi ključ ali dodaj na konec
 insert : ℕ → Bool → Assignment → Assignment
 insert k v []                = (k , v) ∷ []
 insert k v ((k′ , v′) ∷ ρ)   with k ≟ k′
 ... | yes _ = (k , v) ∷ ρ
 ... | no  _ = (k′ , v′) ∷ insert k v ρ
 
-
-------------------------------------------------------------
+---------------------------------------------------------------------
 -- Problem 5.  Evaluating a Formula
-------------------------------------------------------------
---
---   eval ρ φ  =  just (truth value of φ under ρ)   if every
---                                                  variable in φ
---                                                  is bound by ρ;
---             =  nothing                           otherwise.
 
 eval : Assignment → Formula → Maybe Bool
 eval ρ (var n)   = lookup n ρ
@@ -193,9 +137,8 @@ eval ρ (a ∨f b)  with eval ρ a | eval ρ b
 ... | _      | _      = nothing
 
 
-------------------------------------------------------------
+---------------------------------------------------------------------
 -- Problem 6.  Evaluating an NNF
-------------------------------------------------------------
 
 eval-lit : Assignment → Literal → Maybe Bool
 eval-lit ρ (pos n) = lookup n ρ
@@ -214,17 +157,7 @@ eval-nnf ρ (a ∨n b)  with eval-nnf ρ a | eval-nnf ρ b
 
 
 ------------------------------------------------------------
--- Problem 7.  CNF (Conjunctive Normal Form)
-------------------------------------------------------------
---
--- A Disjunct is a non-empty disjunction of literals,
--- a CNF      is a non-empty conjunction of disjuncts.
---
--- Note: the project's grammar prints  CNF → Disjunct ∨ CNF ,
---   which is almost certainly a typo: a *conjunctive* normal form
---   is a *conjunction* of disjuncts, hence ∧ , not ∨ .  We also add
---   the obvious base case  CNF → Disjunct  so that the grammar
---   actually generates non-empty CNFs.
+-- Problem 7.  Definiramo Disjunct in CNF
 
 data Disjunct : Set where
   lit  : Literal → Disjunct
@@ -239,8 +172,8 @@ infixr 7 _∧c_
 
 
 ------------------------------------------------------------
--- Problem 8.  Evaluating a CNF
-------------------------------------------------------------
+-- Problem 8.  eval-disjunct in eval-cnf
+
 
 eval-disjunct : Assignment → Disjunct → Maybe Bool
 eval-disjunct ρ (lit ℓ)   = eval-lit ρ ℓ
@@ -253,6 +186,20 @@ eval-cnf ρ (dis d)   = eval-disjunct ρ d
 eval-cnf ρ (d ∧c φ)  with eval-disjunct ρ d | eval-cnf ρ φ
 ... | just x | just y = just (x and y)
 ... | _      | _      = nothing
+
+------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ------------------------------------------------------------
