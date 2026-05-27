@@ -3,7 +3,7 @@ module Solution where
 -- Imports
 
 open import Data.Nat
-  using (ℕ; _≟_)
+  using (ℕ; _≟_; _⊔_; suc)
 open import Data.Bool
   using (Bool; true; false; not)
   renaming (_∧_ to _and_; _∨_ to _or_)
@@ -187,41 +187,24 @@ eval-cnf ρ (d ∧c φ)  with eval-disjunct ρ d | eval-cnf ρ φ
 ... | just x | just y = just (x and y)
 ... | _      | _      = nothing
 
-------------------------------------------------------------------------------------------------------------------------
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 ------------------------------------------------------------
--- Problem 9.  SAT solver for CNF
+-- Problem 9. SAT-solver za CNF (DPLL splitting rule)
 ------------------------------------------------------------
 --
--- We implement a DPLL-flavoured solver based on the *splitting
--- rule*:  to decide whether φ is satisfiable, split on a variable v
--- and recurse on  φ[v↦true]  and  φ[v↦false] .  Both subproblems
--- have one less free variable, so termination is structural on the
--- list of unassigned variables.
+-- Algoritem: za vsako spremenljivko v formuli poskusimo najprej
+-- true, nato false (splitting rule). Ko so vse spremenljivke
+-- prirejene, ocenimo eval-cnf in vrnemo rezultat.
 --
--- Refinements like unit propagation and pure-literal elimination
--- can be layered on top; we discuss them in the notes.  The core
--- solver below is sound and complete for finite CNFs.
+-- Pravilnost (Problem 10) je vgrajena v izhodni tip: konstruktor
+-- `sat ρ p` nosi dokaz p : eval-cnf ρ φ ≡ just true.
 
--- The variable index of a literal.
+-- Indeks spremenljivke literala
 lit-var : Literal → ℕ
 lit-var (pos n) = n
 lit-var (neg n) = n
 
--- Variable indices appearing in a Disjunct / CNF (with duplicates).
+-- Indeksi spremenljivk v Disjunctu / CNF (z dvojniki)
 dis-vars : Disjunct → List ℕ
 dis-vars (lit ℓ)   = lit-var ℓ ∷ []
 dis-vars (ℓ ∨d d)  = lit-var ℓ ∷ dis-vars d
@@ -230,71 +213,107 @@ cnf-vars : CNF → List ℕ
 cnf-vars (dis d)   = dis-vars d
 cnf-vars (d ∧c φ)  = dis-vars d ++ cnf-vars φ
 
--- Splitting-rule search.
---
---   sat-search vs ρ φ  =  true   iff some extension of ρ that
---                                  assigns every v ∈ vs makes φ true.
---
--- Termination is by structural recursion on the list  vs .  Duplicate
--- entries in  vs  cause re-branching on the same variable, which is
--- wasteful but harmless: `insert` replaces the previous binding.
+-- Izhod SAT-solverja: zadovoljivo prirejanje + dokaz, ali unsat
+data SatResult (φ : CNF) : Set where
+  sat   : (ρ : Assignment) → eval-cnf ρ φ ≡ just true → SatResult φ
+  unsat : SatResult φ
 
-sat-search : List ℕ → Assignment → CNF → Bool
-sat-search [] ρ φ with eval-cnf ρ φ
-... | just true  = true
-... | _          = false
-sat-search (v ∷ vs) ρ φ =
-      sat-search vs (insert v true  ρ) φ
-   or sat-search vs (insert v false ρ) φ
+-- Splitting iskanje: poskusi true, potem false, vrni rezultat
+sat-search : List ℕ → Assignment → (φ : CNF) → SatResult φ
+sat-search []       ρ φ with eval-cnf ρ φ in eq
+... | just true = sat ρ eq
+... | _         = unsat
+sat-search (v ∷ vs) ρ φ with sat-search vs (insert v true ρ) φ
+... | sat ρ′ p = sat ρ′ p
+... | unsat with sat-search vs (insert v false ρ) φ
+...   | sat ρ′ p = sat ρ′ p
+...   | unsat    = unsat
 
-sat? : CNF → Bool
+sat? : (φ : CNF) → SatResult φ
 sat? φ = sat-search (cnf-vars φ) empty φ
 
 
 ------------------------------------------------------------
--- Problem 10.  NNF → CNF  (naive distribution)
+-- Problem 10. Pravilnost SAT-solverja
 ------------------------------------------------------------
 --
--- We push ∨ underneath ∧ using the distributive law
+-- Pravilnost je očitna iz izhodnega tipa: konstruktor `sat ρ p`
+-- že zahteva dokaz `p : eval-cnf ρ φ ≡ just true`, zato je vsak
+-- vrnjen `sat ρ p` po definiciji pravilna rešitev.
+-- Spodnja lema to izrecno zapiše: če sat? vrne sat ρ p, potem
+-- ρ res zadovolji φ.
+
+sat?-sound : ∀ {φ ρ p} → sat? φ ≡ sat ρ p → eval-cnf ρ φ ≡ just true
+sat?-sound {p = p} _ = p
+
+
+------------------------------------------------------------
+-- Problem 11. NNF → CNF s Tseytinovo transformacijo
+------------------------------------------------------------
 --
---     a ∨ (b ∧ c)  ≡  (a ∨ b) ∧ (a ∨ c) .
---
--- This is *equivalence-preserving* (in particular,
--- equisatisfiability-preserving, which is what the project asks for).
--- The trade-off is that the output can be exponentially larger than
--- the input — a sharper Tseytin-style transformation would avoid the
--- blow-up at the cost of introducing fresh variables and only
--- preserving equisatisfiability.  For the project's grammar and
--- sized inputs this simpler version is fine.
+-- Za vsako notranje vozlišče vpeljemo svežo spremenljivko x_i in
+-- dodamo klavzule, ki kodirajo x_i ↔ (struktura vozlišča). Listi
+-- (literali) ne potrebujejo svežih spremenljivk. Rezultat ima
+-- linearno število klavzul (3 na notranje vozlišče) in je
+-- equisatisfiabilen z vhodom.
 
--- Disjunct ∨ Disjunct: append two clauses' literal lists.
-_∨d++_ : Disjunct → Disjunct → Disjunct
-lit ℓ    ∨d++ d = ℓ ∨d d
-(ℓ ∨d e) ∨d++ d = ℓ ∨d (e ∨d++ d)
+-- Obrat literala
+flip-lit : Literal → Literal
+flip-lit (pos n) = neg n
+flip-lit (neg n) = pos n
 
-infixr 6 _∨d++_
+-- Najvišji indeks spremenljivke v NNF (sveže alociramo iznad)
+max-var-lit : Literal → ℕ
+max-var-lit (pos n) = n
+max-var-lit (neg n) = n
 
--- CNF ∧ CNF: append two clause lists.
-_∧c++_ : CNF → CNF → CNF
-dis d    ∧c++ c′ = d ∧c c′
-(d ∧c c) ∧c++ c′ = d ∧c (c ∧c++ c′)
+max-var : NNF → ℕ
+max-var (lit ℓ)   = max-var-lit ℓ
+max-var (a ∧n b)  = max-var a ⊔ max-var b
+max-var (a ∨n b)  = max-var a ⊔ max-var b
 
-infixr 7 _∧c++_
+-- Seznam klavzul + obvezna prva → CNF
+clauses-to-cnf : Disjunct → List Disjunct → CNF
+clauses-to-cnf d []        = dis d
+clauses-to-cnf d (c ∷ cs)  = d ∧c clauses-to-cnf c cs
 
--- Distribute a single clause across a CNF:
---   D ∨ (c₁ ∧ … ∧ cₙ)  ≡  (D ∨ c₁) ∧ … ∧ (D ∨ cₙ)
-distrib-l : Disjunct → CNF → CNF
-distrib-l D (dis e)   = dis (D ∨d++ e)
-distrib-l D (e ∧c c)  = (D ∨d++ e) ∧c distrib-l D c
+-- Tseytin: vhod NNF + naslednji svež indeks
+--   vrnemo: (nov next-fresh, koren-literal podformule, klavzule)
+tseytin : NNF → ℕ → ℕ × Literal × List Disjunct
+tseytin (lit ℓ)  n = n , ℓ , []
+tseytin (a ∧n b) n with tseytin a n
+... | n₁ , la , cs-a with tseytin b n₁
+...   | n₂ , lb , cs-b =
+        suc n₂ , pos n₂ ,
+          (neg n₂ ∨d lit la)
+        ∷ (neg n₂ ∨d lit lb)
+        ∷ (flip-lit la ∨d flip-lit lb ∨d lit (pos n₂))
+        ∷ (cs-a ++ cs-b)
+tseytin (a ∨n b) n with tseytin a n
+... | n₁ , la , cs-a with tseytin b n₁
+...   | n₂ , lb , cs-b =
+        suc n₂ , pos n₂ ,
+          (neg n₂ ∨d la ∨d lit lb)
+        ∷ (flip-lit la ∨d lit (pos n₂))
+        ∷ (flip-lit lb ∨d lit (pos n₂))
+        ∷ (cs-a ++ cs-b)
 
--- Distribute two CNFs:
---   (c₁ ∧ … ∧ cₙ) ∨ (c′₁ ∧ … ∧ c′ₘ)
-distrib : CNF → CNF → CNF
-distrib (dis D)  c′ = distrib-l D c′
-distrib (D ∧c c) c′ = distrib-l D c′ ∧c++ distrib c c′
-
--- Top-level conversion.
+-- Vrhnja pretvorba: dodamo enojno klavzulo (koren = true)
 to-cnf : NNF → CNF
-to-cnf (lit ℓ)   = dis (lit ℓ)
-to-cnf (a ∧n b)  = to-cnf a ∧c++ to-cnf b
-to-cnf (a ∨n b)  = distrib (to-cnf a) (to-cnf b)
+to-cnf φ with tseytin φ (suc (max-var φ))
+... | _ , root , cs = clauses-to-cnf (lit root) cs
+
+
+------------------------------------------------------------
+-- Problem 12. SAT-solver za poljubno Formula
+------------------------------------------------------------
+--
+-- Sestavimo: Formula → NNF → CNF → SAT.
+-- Tseytin pretvorba je equisatisfiabilna: če sat? najde
+-- prirejanje za CNF, je restrikcija na originalne spremenljivke
+-- tudi zadovoljivo prirejanje za originalno Formulo.
+
+sat-formula? : Formula → Maybe Assignment
+sat-formula? φ with sat? (to-cnf (to-nnf φ))
+... | sat ρ _ = just ρ
+... | unsat   = nothing
