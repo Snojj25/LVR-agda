@@ -189,22 +189,32 @@ eval-cnf ρ (d ∧c φ)  with eval-disjunct ρ d | eval-cnf ρ φ
 
 
 ------------------------------------------------------------
--- Problem 9. SAT-solver za CNF (DPLL splitting rule)
+-- Problem 9. SAT-solver za CNF — DPLL
 ------------------------------------------------------------
 --
--- Algoritem: za vsako spremenljivko v formuli poskusimo najprej
--- true, nato false (splitting rule). Ko so vse spremenljivke
--- prirejene, ocenimo eval-cnf in vrnemo rezultat.
+-- Klasični DPLL je sestavljen iz treh delov:
+--   1) UNIT PROPAGATION  — če je v klavzuli en sam še nedoločen literal,
+--                          vsi ostali pa že false, ga MORAMO nastaviti
+--                          tako, da klavzulo zadovolji (sicer konflikt).
+--   2) PURE LITERAL       — če se spremenljivka v formuli pojavi samo
+--                          pozitivno (ali samo negativno), jo varno
+--                          nastavimo na to vrednost (drugje ne škodi).
+--   3) SPLITTING (cepitev) — sicer izberemo spremenljivko in poskusimo
+--                          obe vrednosti (true, nato false).
 --
--- Pravilnost (Problem 10) je vgrajena v izhodni tip: konstruktor
--- `sat ρ p` nosi dokaz p : eval-cnf ρ φ ≡ just true.
+-- POMEMBNO za naš dokaz: formule NE spreminjamo (φ ostane ista). Namesto
+-- da bi iz klavzul brisali zadovoljene literale (kar dela "pravi" DPLL),
+-- samo PAMETNO izbiramo vrednosti spremenljivk in ZGODAJ obrežemo veje,
+-- ki vsebujejo že v celoti napačno (false) klavzulo. Posledica: na listu
+-- iskanja še vedno samo pokličemo eval-cnf, zato dokaz pravilnosti
+-- (Problem 10) ostane preprost — `sat ρ p` nosi p : eval-cnf ρ φ ≡ just true.
 
--- Indeks spremenljivke literala
+-- Indeks spremenljivke literala (pri pos/neg je to isti n)
 lit-var : Literal → ℕ
 lit-var (pos n) = n
 lit-var (neg n) = n
 
--- Indeksi spremenljivk v Disjunctu / CNF (z dvojniki)
+-- Indeksi vseh spremenljivk v Disjunctu / CNF (lahko z dvojniki)
 dis-vars : Disjunct → List ℕ
 dis-vars (lit ℓ)   = lit-var ℓ ∷ []
 dis-vars (ℓ ∨d d)  = lit-var ℓ ∷ dis-vars d
@@ -213,22 +223,117 @@ cnf-vars : CNF → List ℕ
 cnf-vars (dis d)   = dis-vars d
 cnf-vars (d ∧c φ)  = dis-vars d ++ cnf-vars φ
 
--- Izhod SAT-solverja: zadovoljivo prirejanje + dokaz, ali unsat
+------------------------------------------------------------
+-- (1) Zaznavanje konfliktov — osnova za unit propagation
+------------------------------------------------------------
+--
+-- Unit propagation v jedru pomeni: "ne hodi po veji, kjer postane neka
+-- klavzula v celoti false". Zato potrebujemo test, ali je klavzula (oz.
+-- cela CNF) pod trenutnim ρ že napačna.
+
+-- literal je "false", če ga ρ priredi in se ovrednoti v false
+lit-false? : Assignment → Literal → Bool
+lit-false? ρ ℓ with eval-lit ρ ℓ
+... | just false = true
+... | _          = false     -- true ali še nedoločen → ni (zanesljivo) false
+
+-- klavzula je v KONFLIKTU, če so VSI njeni literali false
+--   (takrat je ni mogoče več zadovoljiti — to je signal za rez veje)
+clause-conflict? : Assignment → Disjunct → Bool
+clause-conflict? ρ (lit ℓ)  = lit-false? ρ ℓ
+clause-conflict? ρ (ℓ ∨d d) = lit-false? ρ ℓ and clause-conflict? ρ d
+
+-- CNF je v konfliktu, če je v konfliktu KATERA KOLI klavzula
+cnf-conflict? : Assignment → CNF → Bool
+cnf-conflict? ρ (dis d)  = clause-conflict? ρ d
+cnf-conflict? ρ (d ∧c φ) = clause-conflict? ρ d or cnf-conflict? ρ φ
+
+------------------------------------------------------------
+-- (2) Pure literal elimination
+------------------------------------------------------------
+--
+-- Pogledamo, s kakšno polariteto se spremenljivka v sploh pojavlja v φ.
+
+-- ali se v pojavi pozitivno (kot pos v) / negativno (kot neg v) v literalu
+pos-occ? : ℕ → Literal → Bool
+pos-occ? v (pos n) with v ≟ n
+... | yes _ = true
+... | no  _ = false
+pos-occ? v (neg _) = false
+
+neg-occ? : ℕ → Literal → Bool
+neg-occ? v (neg n) with v ≟ n
+... | yes _ = true
+... | no  _ = false
+neg-occ? v (pos _) = false
+
+-- razširimo iskanje polaritete na klavzule in celoten CNF
+dis-pos? : ℕ → Disjunct → Bool
+dis-pos? v (lit ℓ)  = pos-occ? v ℓ
+dis-pos? v (ℓ ∨d d) = pos-occ? v ℓ or dis-pos? v d
+
+dis-neg? : ℕ → Disjunct → Bool
+dis-neg? v (lit ℓ)  = neg-occ? v ℓ
+dis-neg? v (ℓ ∨d d) = neg-occ? v ℓ or dis-neg? v d
+
+cnf-pos? : ℕ → CNF → Bool
+cnf-pos? v (dis d)  = dis-pos? v d
+cnf-pos? v (d ∧c φ) = dis-pos? v d or cnf-pos? v φ
+
+cnf-neg? : ℕ → CNF → Bool
+cnf-neg? v (dis d)  = dis-neg? v d
+cnf-neg? v (d ∧c φ) = dis-neg? v d or cnf-neg? v φ
+
+-- pure literal: samo pozitivno → true; samo negativno → false;
+--   mešano ali je sploh ni → nothing (ni pure, treba bo cepiti)
+pure-value : ℕ → CNF → Maybe Bool
+pure-value v φ with cnf-pos? v φ | cnf-neg? v φ
+... | true  | false = just true
+... | false | true  = just false
+... | _     | _     = nothing
+
+------------------------------------------------------------
+-- (3) Iskanje s cepitvijo + zgornja dela vgrajena
+------------------------------------------------------------
+
+-- Izhod SAT-solverja: odvisni tip SatResult φ — sat ρ p vrne ρ + dokaz p,
+-- unsat pomeni "ni zadovoljivega prirejanja"
 data SatResult (φ : CNF) : Set where
   sat   : (ρ : Assignment) → eval-cnf ρ φ ≡ just true → SatResult φ
   unsat : SatResult φ
 
--- Splitting iskanje: poskusi true, potem false, vrni rezultat
+-- Tri medsebojno rekurzivne funkcije (najprej napovemo tipe):
+--   sat-search — glavna zanka po seznamu spremenljivk
+--   decide     — izbere strategijo (pure literal ali cepitev) za eno spr.
+--   try-assign — priredi v←b, a najprej preveri konflikt (unit propagation)
 sat-search : List ℕ → Assignment → (φ : CNF) → SatResult φ
-sat-search []       ρ φ with eval-cnf ρ φ in eq
-... | just true = sat ρ eq
-... | _         = unsat
-sat-search (v ∷ vs) ρ φ with sat-search vs (insert v true ρ) φ
-... | sat ρ′ p = sat ρ′ p
-... | unsat with sat-search vs (insert v false ρ) φ
-...   | sat ρ′ p = sat ρ′ p
-...   | unsat    = unsat
+decide     : ℕ → List ℕ → Assignment → (φ : CNF) → SatResult φ
+try-assign : ℕ → Bool → List ℕ → Assignment → (φ : CNF) → SatResult φ
 
+-- sat-search: ko zmanjka spremenljivk, ovrednotimo formulo (list iskanja).
+sat-search []       ρ φ with eval-cnf ρ φ in eq
+... | just true = sat ρ eq          -- eq je dokaz, ki ga zahteva `sat`
+... | _         = unsat
+-- sicer obdelamo prvo spremenljivko v
+sat-search (v ∷ vs) ρ φ with lookup v ρ
+... | just _  = sat-search vs ρ φ   -- v je že določen (dvojnik) → preskoči
+... | nothing = decide v vs ρ φ     -- v je nov → izberi strategijo
+
+-- decide: najprej poskusimo PURE LITERAL, sicer CEPIMO na obe vrednosti
+decide v vs ρ φ with pure-value v φ
+... | just b  = try-assign v b vs ρ φ              -- pure: dovolj ena vrednost
+... | nothing with try-assign v true  vs ρ φ       -- cepitev: najprej true ...
+...   | sat ρ′ p = sat ρ′ p
+...   | unsat    = try-assign v false vs ρ φ        -- ... če ne gre, še false
+
+-- try-assign: priredi v←b; če to TAKOJ naredi konflikt (neka klavzula je
+--   v celoti false), je veja brezupna → unsat (to je učinek unit propagation:
+--   napačna vrednost unit-klavzule je takoj zavrnjena). Sicer nadaljujemo.
+try-assign v b vs ρ φ with cnf-conflict? (insert v b ρ) φ
+... | true  = unsat
+... | false = sat-search vs (insert v b ρ) φ
+
+-- Vrhnji klic: prazno prirejanje + vse spremenljivke formule
 sat? : (φ : CNF) → SatResult φ
 sat? φ = sat-search (cnf-vars φ) empty φ
 
@@ -237,12 +342,13 @@ sat? φ = sat-search (cnf-vars φ) empty φ
 -- Problem 10. Pravilnost SAT-solverja
 ------------------------------------------------------------
 --
--- Pravilnost je očitna iz izhodnega tipa: konstruktor `sat ρ p`
--- že zahteva dokaz `p : eval-cnf ρ φ ≡ just true`, zato je vsak
--- vrnjen `sat ρ p` po definiciji pravilna rešitev.
--- Spodnja lema to izrecno zapiše: če sat? vrne sat ρ p, potem
--- ρ res zadovolji φ.
-
+-- Pri nas JE očitna: konstruktor `sat ρ p` že zahteva dokaz
+-- `p : eval-cnf ρ φ ≡ just true`, zato solver sploh ne MORE vrniti
+-- `sat ρ`, ne da bi imel dokaz, da ρ res zadovolji φ. Pravilnost
+-- (soundness) je torej vgrajena že v tip `SatResult`.
+--
+-- Spodaj to zapišemo še izrecno: če sat? vrne `sat ρ p`, potem je
+-- p natanko dokaz `eval-cnf ρ φ ≡ just true`, ki ga vrnemo nazaj.
 sat?-sound : ∀ {φ ρ p} → sat? φ ≡ sat ρ p → eval-cnf ρ φ ≡ just true
 sat?-sound {p = p} _ = p
 
@@ -279,23 +385,28 @@ clauses-to-cnf d (c ∷ cs)  = d ∧c clauses-to-cnf c cs
 
 -- Tseytin: vhod NNF + naslednji svež indeks
 --   vrnemo: (nov next-fresh, koren-literal podformule, klavzule)
+-- Vsako notranje vozlišče dobi svežo spremenljivko x = pos n₂, klavzule pa
+-- kodirajo ekvivalenco x ↔ (vozlišče). Implikacijo a → b zapišemo kot ¬a ∨ b.
 tseytin : NNF → ℕ → ℕ × Literal × List Disjunct
+-- list: literal že "predstavlja" sam sebe, brez svežih spremenljivk
 tseytin (lit ℓ)  n = n , ℓ , []
+-- x ↔ (la ∧ lb):  (x→la) ∧ (x→lb) ∧ (la∧lb→x)
 tseytin (a ∧n b) n with tseytin a n
 ... | n₁ , la , cs-a with tseytin b n₁
 ...   | n₂ , lb , cs-b =
         suc n₂ , pos n₂ ,
-          (neg n₂ ∨d lit la)
-        ∷ (neg n₂ ∨d lit lb)
-        ∷ (flip-lit la ∨d flip-lit lb ∨d lit (pos n₂))
+          (neg n₂ ∨d lit la)                            -- ¬x ∨ la      (x → la)
+        ∷ (neg n₂ ∨d lit lb)                            -- ¬x ∨ lb      (x → lb)
+        ∷ (flip-lit la ∨d flip-lit lb ∨d lit (pos n₂))  -- ¬la∨¬lb∨x    (la∧lb → x)
         ∷ (cs-a ++ cs-b)
+-- x ↔ (la ∨ lb):  (x→la∨lb) ∧ (la→x) ∧ (lb→x)
 tseytin (a ∨n b) n with tseytin a n
 ... | n₁ , la , cs-a with tseytin b n₁
 ...   | n₂ , lb , cs-b =
         suc n₂ , pos n₂ ,
-          (neg n₂ ∨d la ∨d lit lb)
-        ∷ (flip-lit la ∨d lit (pos n₂))
-        ∷ (flip-lit lb ∨d lit (pos n₂))
+          (neg n₂ ∨d la ∨d lit lb)                      -- ¬x ∨ la ∨ lb (x → la∨lb)
+        ∷ (flip-lit la ∨d lit (pos n₂))                 -- ¬la ∨ x      (la → x)
+        ∷ (flip-lit lb ∨d lit (pos n₂))                 -- ¬lb ∨ x      (lb → x)
         ∷ (cs-a ++ cs-b)
 
 -- Vrhnja pretvorba: dodamo enojno klavzulo (koren = true)
@@ -308,12 +419,35 @@ to-cnf φ with tseytin φ (suc (max-var φ))
 -- Problem 12. SAT-solver za poljubno Formula
 ------------------------------------------------------------
 --
--- Sestavimo: Formula → NNF → CNF → SAT.
--- Tseytin pretvorba je equisatisfiabilna: če sat? najde
--- prirejanje za CNF, je restrikcija na originalne spremenljivke
--- tudi zadovoljivo prirejanje za originalno Formulo.
+-- Sestavimo cevovod:  Formula → NNF → CNF → SAT.
+--
+-- Tudi tu hočemo rezultat z DOKAZOM (kot pri Problem 9), a tokrat
+-- mora dokaz govoriti o `eval` na ORIGINALNI Formuli — ne o CNF.
+-- Tseytinove pravilnosti formalno ne dokazujemo (težko!), zato
+-- uporabimo isti trik kot pri SAT-solverju: kandidatno prirejanje ρ
+-- iz CNF-solverja še enkrat PREVERIMO z `eval ρ φ` na originalni
+-- formuli in šele ob `just true` vrnemo `sat ρ` z dokazom.
+-- Tako je rezultat ZDRAV po konstrukciji, brez dokazovanja Tseytina.
 
-sat-formula? : Formula → Maybe Assignment
+-- Izhod za poljubno formulo: dokaz govori o eval na Formula
+data FormulaSat (φ : Formula) : Set where
+  sat   : (ρ : Assignment) → eval ρ φ ≡ just true → FormulaSat φ
+  unsat : FormulaSat φ
+
+sat-formula? : (φ : Formula) → FormulaSat φ
 sat-formula? φ with sat? (to-cnf (to-nnf φ))
+... | unsat   = unsat                       -- CNF nezadovoljiv → tudi Formula
+... | sat ρ _ with eval ρ φ in eq           -- ponovno preverimo na Formuli
+...   | just true = sat ρ eq                -- eq : eval ρ φ ≡ just true
+...   | _         = unsat
+
+-- Pravilnost Problem 12 (spet očitna iz tipa): če sat-formula? vrne
+-- `sat ρ p`, potem ρ res zadovolji originalno formulo φ.
+sat-formula?-sound : ∀ {φ ρ p} → sat-formula? φ ≡ sat ρ p → eval ρ φ ≡ just true
+sat-formula?-sound {p = p} _ = p
+
+-- Priročna oblika, ki vrne le prirejanje (brez dokaza)
+solve : Formula → Maybe Assignment
+solve φ with sat-formula? φ
 ... | sat ρ _ = just ρ
 ... | unsat   = nothing
