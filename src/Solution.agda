@@ -18,7 +18,7 @@ open import Data.Sum
 open import Data.Empty
   using (⊥)
 open import Relation.Nullary
-  using (Dec; yes; no; ¬_)
+  using (Dec; yes; no)
 open import Relation.Binary.PropositionalEquality
   using (_≡_; refl)
 

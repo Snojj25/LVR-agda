@@ -12,11 +12,10 @@
 module Tests where
 
 open import Solution
-open import Data.Nat using (ℕ)
 open import Data.Bool using (Bool; true; false)
-open import Data.Maybe using (Maybe; just; nothing; is-just)
-open import Data.List using (List; []; _∷_)
-open import Data.Product using (_×_; _,_)
+open import Data.Maybe using (just; nothing; is-just)
+open import Data.List using ([]; _∷_)
+open import Data.Product using (_,_)
 open import Relation.Binary.PropositionalEquality using (_≡_; refl)
 
 
@@ -180,6 +179,25 @@ test-sat-model = refl
 -- A lone literal needs no fresh variables
 test-tseytin-lit : to-cnf (lit (pos 0)) ≡ dis (lit (pos 0))
 test-tseytin-lit = refl
+
+-- Exact clause shape for one ∧-node (x₀ ∧ x₁, fresh variable x₂):
+--   x₂ ∧ (¬x₂ ∨ x₀) ∧ (¬x₂ ∨ x₁) ∧ (¬x₀ ∨ ¬x₁ ∨ x₂)
+-- (the worked example in notes/11-tseytin.md §6)
+test-tseytin-and :
+    to-cnf (lit (pos 0) ∧n lit (pos 1))
+  ≡ (lit (pos 2)) ∧c (neg 2 ∨d lit (pos 0))
+                  ∧c (neg 2 ∨d lit (pos 1))
+                  ∧c dis (neg 0 ∨d (neg 1 ∨d lit (pos 2)))
+test-tseytin-and = refl
+
+-- Exact clause shape for one ∨-node (x₀ ∨ x₁, fresh variable x₂):
+--   x₂ ∧ (¬x₂ ∨ x₀ ∨ x₁) ∧ (¬x₀ ∨ x₂) ∧ (¬x₁ ∨ x₂)
+test-tseytin-or :
+    to-cnf (lit (pos 0) ∨n lit (pos 1))
+  ≡ (lit (pos 2)) ∧c (neg 2 ∨d (pos 0 ∨d lit (pos 1)))
+                  ∧c (neg 0 ∨d lit (pos 2))
+                  ∧c dis (neg 1 ∨d lit (pos 2))
+test-tseytin-or = refl
 
 -- Equisatisfiability spot checks: sat? agrees on ψ and to-cnf ψ.
 -- x₀ ∧ ¬x₀ (unsat NNF) stays unsat after Tseytin …
