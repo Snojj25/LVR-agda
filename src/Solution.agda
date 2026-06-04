@@ -193,7 +193,7 @@ eval-cnf ρ (d ∧c φ)  with eval-disjunct ρ d | eval-cnf ρ φ
 --
 -- Vodilo (4 faze, glej oznake spodaj):
 --   spremenljivke  — pobere indekse, na katerih bomo prirejali
---   konflikt       — unit propagation: zazna v celoti false klavzulo
+--   konflikt       — zazna klavzulo, ki je že v celoti false → rez veje
 --   pure literal   — spremenljivka z eno samo polariteto → fiksna vrednost
 --   iskanje        — sat-search / decide / try-assign (cepitev)
 --
@@ -213,7 +213,7 @@ cnf-vars : CNF → List ℕ
 cnf-vars (dis d)   = dis-vars d
 cnf-vars (d ∧c φ)  = dis-vars d ++ cnf-vars φ
 
--- konflikt (unit propagation) -------------------------------
+-- konflikt (rezanje vej) ------------------------------------
 lit-false? : Assignment → Literal → Bool
 lit-false? ρ ℓ with eval-lit ρ ℓ
 ... | just false = true

@@ -1,8 +1,8 @@
 # Note 01 — Propositional Formulas as an Inductive Type
 
-Problem 1: define `Formula` in Agda. Code: `src/Solution.agda` lines
-40–48. Every later problem reduces to recursion on these four
-constructors.
+Problem 1: define `Formula` in Agda. Code: `src/Solution.agda`,
+Problem 1 section. Every later problem reduces to recursion on these
+four constructors.
 
 ## 1. Propositional logic in one paragraph
 
@@ -36,7 +36,7 @@ syntax*. As a grammar:
 Formula  ::=  Var n  |  ¬ Formula  |  Formula ∧ Formula  |  Formula ∨ Formula
 ```
 
-In Agda (`src/Solution.agda` lines 40–44):
+In Agda (`src/Solution.agda`, Problem 1):
 
 ```agda
 data Formula : Set where
@@ -68,7 +68,7 @@ two operators sharing a spelling — particularly confusing in `eval`,
 which pattern-matches on one and returns the other. The suffix tags
 the type: `∧f` for `Formula`, `∧n` for `NNF`, `∧c` for `CNF`. The
 Bool operators are renamed `and` / `or` at the import site
-(`Solution.agda` lines 17–19).
+(`Solution.agda`, import section).
 
 ## 5. Fixity declarations
 
@@ -121,7 +121,7 @@ smaller sub-tree. Every later function on `Formula` (`to-nnf`, `eval`,
 Our `Formula` is a *deep* embedding: formulas are *values* you can
 pattern-match on, traverse, and transform. The alternative — a
 *shallow* embedding identifying `p ∧ q` with the host's `P × Q` —
-makes syntactic manipulation impossible. Since Problems 2–10 are
+makes syntactic manipulation impossible. Since Problems 2–12 are
 exactly about transforming syntax (to NNF, CNF, with fresh variables),
 deep is the only sensible choice; the price is writing `eval`
 explicitly to recover meaning.

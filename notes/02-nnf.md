@@ -1,7 +1,8 @@
 # Note 02 — Negation Normal Form
 
 Problems 2 and 3: the `Literal` and `NNF` datatypes, and
-`to-nnf : Formula → NNF`. Code: `src/Solution.agda` lines 58–99.
+`to-nnf : Formula → NNF`. Code: `src/Solution.agda`, Problems 2 and 3
+sections.
 
 ## 1. What is NNF?
 
@@ -20,7 +21,7 @@ constructor**. The only `¬` lives inside a literal.
 ## 2. Why NNF?
 
 - **Launching pad for CNF/DNF.** Both are sub-grammars of NNF.
-- **Tseytin (Problem 10) needs NNF input.** No polarity reasoning per
+- **Tseytin (Problem 11) needs NNF input.** No polarity reasoning per
   node — three node shapes only.
 - **Fewer cases.** Functions over `NNF` have three cases (`lit`,
   `∧n`, `∨n`) instead of four.
@@ -38,12 +39,12 @@ A tagged variable index. The invariant "¬ wraps a variable only" is
 structural — there is no constructor that could violate it. We make
 bad values *unrepresentable* rather than ruling them out by predicate.
 
-A small helper used in Tseytin:
+A small helper used in Tseytin (defined in the Problem 11 section):
 
 ```agda
-flip : Literal → Literal
-flip (pos n) = neg n
-flip (neg n) = pos n
+flip-lit : Literal → Literal
+flip-lit (pos n) = neg n
+flip-lit (neg n) = pos n
 ```
 
 ## 4. `NNF`
@@ -236,8 +237,8 @@ the project.
 
 NNF is the common ancestor of two stricter normal forms:
 
-- **CNF** (note 03): conjunction of disjunctions of literals.
+- **CNF** (note 07): conjunction of disjunctions of literals.
 - **DNF**: the dual.
 
-The pipeline `Formula → NNF → CNF` continues in note 03 (CNF type)
-and note 06 (Tseytin: an NNF to *equisatisfiable* CNF in linear size).
+The pipeline `Formula → NNF → CNF` continues in note 07 (CNF type)
+and note 11 (Tseytin: an NNF to *equisatisfiable* CNF in linear size).

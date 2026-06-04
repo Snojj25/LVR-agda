@@ -2,7 +2,7 @@
 
 Problems 4, 5, 6: the `Assignment` type and the two evaluators
 (`eval` for `Formula`, `eval-nnf` for `NNF`). Code:
-`src/Solution.agda` lines 108–213.
+`src/Solution.agda`, Problems 4–6 sections.
 
 ## 1. What is an assignment?
 
@@ -807,7 +807,7 @@ Two practical consequences of dropping the `¬f_` case:
    four. The equivalence theorem of §6 is shorter because of this.
 2. **`not` appears exactly once.** Algorithms that care about
    polarity (DPLL pure-literal elimination, the Tseytin transform
-   of note 06) have direct access to it at the leaves — they read
+   of note 11) have direct access to it at the leaves — they read
    `pos n` / `neg n` instead of detecting `¬f` at some internal
    node.
 

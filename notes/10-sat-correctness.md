@@ -1,31 +1,21 @@
-# Problem 10 — pravilnost SAT-solverja
+# Note 10 — Problem 10: Correctness of the SAT Solver
 
-Koda: `src/Solution.agda` (Problem 10, takoj za Problem 9).  
-Vizualizacija: [problem10-visual.html](problem10-visual.html)
+Problem 10: *"Show that the SAT solver you implemented is indeed
+correct, if that is not obvious from the output type of the SAT
+solver."* Code: `src/Solution.agda`, Problem 10 section (right after
+Problem 9). Interactive visualisation:
+[problem10-visual.html](problem10-visual.html).
 
----
+## 1. The two halves of correctness
 
-## Kaj je cilj?
+| Half             | Statement                                                | Status in our solution            |
+| ---------------- | -------------------------------------------------------- | --------------------------------- |
+| **Soundness**    | `sat? φ ≡ sat ρ p` ⟹ `eval-cnf ρ φ ≡ just true`          | **Holds by the output type**      |
+| **Completeness** | a model exists ⟹ `sat? φ` returns `sat` (not `unsat`)    | **Not formally proven** (honest!) |
 
-Preveriti, da SAT-solver **ne laže**:
+## 2. Soundness — why it is "obvious from the output type"
 
-- če vrne `sat ρ p`, potem ρ res zadovolji φ;
-- (popolnost) če obstaja ρ, ki zadovolji φ, solver ga najde.
-
----
-
-## Dva dela pravilnosti
-
-| Del | Pomen | Pri nas |
-|-----|--------|---------|
-| **Zdravost** | `sat ρ p` ⇒ `eval-cnf ρ φ ≡ just true` | **Dokazano** (skoraj brez dela) |
-| **Popolnost** | `eval-cnf ρ φ ≡ just true` ⇒ solver vrne `sat ρ _` | **Ni dokončano** |
-
----
-
-## Zdravost — zakaj je “očitna”?
-
-Problem 9 definira:
+Problem 9 defines
 
 ```agda
 data SatResult (φ : CNF) : Set where
@@ -33,50 +23,76 @@ data SatResult (φ : CNF) : Set where
   unsat : SatResult φ
 ```
 
-Agda **ne dovoli** konstruktorja `sat ρ p`, če nimaš dokaza `p`. Solver na listu iskanja naredi:
+Agda **refuses to construct** `sat ρ p` without a valid proof `p`.
+The only place the solver builds a `sat` is the search leaf:
 
 ```agda
 sat-search [] ρ φ with eval-cnf ρ φ in eq
 ... | just true = sat ρ eq
 ```
 
-`eq` je točno dokaz, ki ga `sat` zahteva. Zato je zdravost **vgrajena v tip**, ne v ločenem dokazu.
+The `with … in eq` idiom binds `eq : eval-cnf ρ φ ≡ just true` in
+that branch — exactly the proof `sat` demands. So soundness is
+*enforced by the type checker*, not argued after the fact. This is
+precisely the situation the problem statement anticipates with "if
+that is not obvious from the output type".
 
-Lema `sat?-sound` samo “izlušči” dokaz, če primerjaš rezultat:
+For clarity the file still states it as an explicit lemma:
 
 ```agda
 sat?-sound : ∀ {φ ρ p} → sat? φ ≡ sat ρ p → eval-cnf ρ φ ≡ just true
 sat?-sound {p = p} _ = p
 ```
 
-Telo je `p` — dokaz je že v konstruktorju `sat`.
+The body is just `p` — the proof already lives inside the `sat`
+constructor; the lemma merely extracts it.
 
----
+## 3. Completeness — what we would want, and why we don't prove it
 
-## Popolnost — zakaj ne deluje
+The two statements we would like (equivalent formulations):
 
-**Polna razlaga:** `src/Solution.agda`, Problem 10, komentarji pod `-- popolnost — zakaj ne deluje`.
+```agda
+sat?-complete₁ : ∀ {φ ρ} → eval-cnf ρ φ ≡ just true → sat? φ ≡ sat ρ′ _   -- solver doesn't miss models
+sat?-complete₂ : ∀ {φ} → (∀ ρ → eval-cnf ρ φ ≢ just true) → sat? φ ≡ unsat -- unsat answers don't lie
+```
 
-**Cilj 1:** če obstaja ρ z `eval-cnf ρ φ ≡ just true`, solver vrne `sat` (ne `unsat`).
+The full discussion lives as a long comment block in
+`src/Solution.agda` (Problem 10). Summary of the obstacles:
 
-**Cilj 2:** če ni zadovoljivega ρ, vrne `unsat`.
+| # | Obstacle | Core of the issue |
+|---|----------|--------------------|
+| A | `unsat` carries no proof | The type of `unsat` does not say "no model exists", so nothing about UNSAT answers can be extracted from `SatResult` itself. |
+| B | Large induction over the search | Proving the solver never wrongly answers `unsat` means showing, for every DPLL step (skip, pure literal, conflict cut, split), that a surviving model is never lost. Each case needs auxiliary lemmas about `eval-cnf` and `insert`. |
+| C | Completeness of `cnf-vars` | One must prove `cnf-vars` mentions every variable that influences `eval-cnf` (duplicates are harmless, omissions are not). |
+| D | Partial assignments | "We explored all branches" must be connected to "for *every* mathematical ρ" — Agda does not know our finite search covers the infinite type `Assignment` without an explicit argument. |
 
-| Razlog | Jedro |
-|--------|--------|
-| A | `unsat` nima dokaza v tipu |
-| B | Velika indukcija na DPLL (pure, konflikt, cepitev, dvojnik) |
-| C | `cnf-vars` mora biti popoln |
-| D | Delni `Assignment` ≠ “vsi ρ” |
+The solver *is* complete in the informal sense — the search space over
+the formula's variables is explored exhaustively, branches are cut
+only when a clause is already entirely false (no extension can repair
+it), and a pure literal's forced value never destroys a model. But
+formalising this is a sizeable proof development, far beyond the
+project's scope, and we say so honestly rather than hand-waving.
 
-`sat-from-proof` — če že imaš dokaz `p`, zgradiš `SatResult`; to **ni** popolnost solverja.
+## 4. `sat-from-proof`
 
----
+```agda
+sat-from-proof : ∀ {φ} {ρ : Assignment}
+               → (p : eval-cnf ρ φ ≡ just true) → SatResult φ
+sat-from-proof {ρ = ρ} p = sat ρ p
+```
 
-## Povezava s Problem 9
+If you *already have* a model and its proof, you can build a
+`SatResult` by hand. This is **not** completeness of the solver (it
+says nothing about `sat?` finding that ρ); it only illustrates that
+the `sat` constructor is exactly "a model with evidence".
 
-| Problem 9 | Problem 10 |
-|-----------|------------|
-| `SatResult`, `sat?` | razlaga, zakaj je to zdravo |
-| dokaz `eq` na listu | lema `sat?-sound` |
+## 5. Relation to Problem 9
 
-Za oddajo: zdravost je pokrita z dizajnom tipa + kratko lemo; popolnost pošteno označiš kot odprt problem (poskus v komentarjih).
+| Problem 9                    | Problem 10                              |
+| ---------------------------- | ---------------------------------------- |
+| defines `SatResult`, `sat?`  | explains why that design is sound       |
+| the leaf produces `eq`       | the lemma `sat?-sound` extracts it      |
+
+Bottom line for grading: soundness is covered by the type design plus
+a one-line lemma; completeness is honestly documented as out of scope,
+with the proof obligations sketched in the code comments.

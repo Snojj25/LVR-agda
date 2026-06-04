@@ -1,7 +1,7 @@
-# Note 03 — Conjunctive Normal Form (Problems 7 & 8)
+# Note 07 — Conjunctive Normal Form (Problems 7 & 8)
 
 Problems 7 and 8: the CNF type and its evaluator. Code:
-`src/Solution.agda` lines 200–226.
+`src/Solution.agda`, Problems 7 and 8 sections.
 
 ## 1. What is CNF?
 
@@ -27,19 +27,20 @@ CNF is the *lingua franca* of practical SAT solving. Every modern
 solver (MiniSat, CaDiCaL, Glucose, …) accepts CNF input and is built
 around clause-level reasoning (unit propagation, watched literals,
 clause learning). To use a SAT solver, you first translate to CNF —
-which is what Problem 7 sets up and Problem 9 (note 05) consumes.
+which is what Problem 7 sets up and Problem 9 (note 09) consumes.
 
-## 3. The grammar typo
+## 3. Reading the grammar
 
-The handout prints `CNF → Disjunct ∨ CNF`, which is wrong twice: the
-top connective of a *conjunctive* NF must be `∧`, and there is no
-base case. We fix it to
+The handout grammar is
 
 ```
-CNF → Disjunct  |  Disjunct ∧ CNF
+Disjunct → Literal  |  Literal ∨ Disjunct
+CNF      → Disjunct  |  Disjunct ∧ CNF
 ```
 
-— a non-empty conjunction of disjuncts.
+Note that both levels are *non-empty by construction*: a `Disjunct`
+contains at least one literal, and a `CNF` at least one clause. Our
+Agda types mirror the productions one-for-one.
 
 ## 4. The Agda definition
 
@@ -95,12 +96,13 @@ runtime, but that's an algorithmic concern, not a syntactic one.)
 
 The result is correct but can blow up exponentially. For
 `(a₁ ∧ b₁) ∨ ⋯ ∨ (aₙ ∧ bₙ)` (size `2n`), distribution produces `2ⁿ`
-clauses. That motivates the **Tseytin transformation** (note 06): an
+clauses. That motivates the **Tseytin transformation** (note 11): an
 *equisatisfiable* CNF of linear size, with fresh variables for
 internal nodes.
 
-We don't implement either conversion here — Problem 7 takes CNF as
-given and Problem 9 writes a solver for it.
+Neither conversion is implemented in this problem — Problem 7 takes
+CNF as given, Problem 9 (note 09) writes a solver for it, and
+Problem 11 (note 11) implements Tseytin.
 
 ## 6. Evaluation (Problem 8)
 

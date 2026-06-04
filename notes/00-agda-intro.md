@@ -100,6 +100,6 @@ A *proof* of `2 + 2 ≡ 4` is just a value of that type.
 ## 8. Where to go next
 
 The notes that follow define `Formula` (note 01), recursive functions
-over it (notes 02–03), and the surrounding machinery. For deeper
+over it (notes 02 and 04), and the surrounding machinery. For deeper
 study: Wadler's *Programming Language Foundations in Agda* (PLFA),
 free online.
