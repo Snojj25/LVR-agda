@@ -288,9 +288,10 @@ sat? φ = sat-search (cnf-vars φ) empty φ
 
 
 ------------------------------------------------------------
--- Problem 10. Correctness of the SAT solver (soundness + completeness)
+-- Problem 10. Corectness of the SAT solver (soundness + completeness)
 --
--- Pri tem problemu je vec komentarjev: moramo formalno razloziti soundness
+-- Pri tem problemu je vec komentarjev: 
+-- moramo formalno razloziti soundness
 -- in zakaj completeness v tej datoteki se ni dokazana do konca.
 
 -- soundness -------------------------------------------------
@@ -321,21 +322,23 @@ sat?-sound {p = p} _ = p
 --
 -- Za complete₁ bi bila glavna ideja: indukcija na `sat-search` / `decide` /
 -- `try-assign`. Vsak korak DPLL bi zahteval svojo pod-lemo (insert + eval-cnf):
+
 --   preskok v, ki je ze v ρ (dvojnik na cnf-vars)
 --   pure literal — ohrani obstojeci satisfying assignment
 --   zgodnji konflikt — nobena razsiritev ne more popraviti klavzule
 --   cepitev — ce true veja ne uspe, obstaja resitev z v ↦ false
 -- V okviru te naloge teh lem nismo razvili do konca.
---
+
+
 -- Dodatno: `sat-search` obisce samo `cnf-vars φ`. Za completeness bi morali
 -- dokazati da seznam pokrije vse indekse ki vplivajo na eval-cnf
 -- (duplikati so ok, manjkajoci ne).
---
+---
 -- `Assignment` je delna lista — preverjene so le veje drevesa iskanja, ne pa
 --   vseh moznih ρ v abstraktnem smislu.
 --
--- Delni okvir indukcije (zapis za porocilo):
---   sat-search-complete :
+-- Delni okvir indukcije :
+--   sat-search-conplete :
 --     ∀ vs ρ {φ} (p : eval-cnf ρ φ ≡ just true)
 --     → sat-search vs ρ φ ≡ sat ρ _
 --   bazni korak [] : iz p sledi `sat ρ eq`  — to deluje
