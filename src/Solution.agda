@@ -297,7 +297,6 @@ pure-value v φ with cnf-pos? v φ | cnf-neg? v φ
 ------------------------------------------------------------
 
 -- Izhod SAT-solverja: odvisni tip SatResult φ — sat ρ p vrne ρ + dokaz p,
--- unsat pomeni "ni zadovoljivega prirejanja"
 data SatResult (φ : CNF) : Set where
   sat   : (ρ : Assignment) → eval-cnf ρ φ ≡ just true → SatResult φ
   unsat : SatResult φ
@@ -342,15 +341,47 @@ sat? φ = sat-search (cnf-vars φ) empty φ
 -- Problem 10. Pravilnost SAT-solverja
 ------------------------------------------------------------
 --
--- Pri nas JE očitna: konstruktor `sat ρ p` že zahteva dokaz
--- `p : eval-cnf ρ φ ≡ just true`, zato solver sploh ne MORE vrniti
--- `sat ρ`, ne da bi imel dokaz, da ρ res zadovolji φ. Pravilnost
--- (soundness) je torej vgrajena že v tip `SatResult`.
+-- Pravilnost = zdravost + popolnost.
+--   Zdravost:  če rečemo SAT, ρ res drži.
+--   Popolnost: če obstaja ρ, ki drži, solver ga najde (ne vrne unsat).
 --
--- Spodaj to zapišemo še izrecno: če sat? vrne `sat ρ p`, potem je
--- p natanko dokaz `eval-cnf ρ φ ≡ just true`, ki ga vrnemo nazaj.
+-- (A) ZDRAVOST — očitna iz tipa `SatResult` + kratka lema spodaj.
+
 sat?-sound : ∀ {φ ρ p} → sat? φ ≡ sat ρ p → eval-cnf ρ φ ≡ just true
 sat?-sound {p = p} _ = p
+
+-- (B) POPOLNOST — poskus (ni dokončan, datoteka se še vedno preveri)
+
+-- Kaj bi radi dokazali (ena od oblik):
+--
+--   sat?-complete₁ : ∀ {φ ρ} → eval-cnf ρ φ ≡ just true
+--                  → sat? φ ≡ sat ρ _
+--
+--   sat?-complete₂ : ∀ {φ} → (∀ ρ → eval-cnf ρ φ ≢ just true)
+--                  → sat? φ ≡ unsat
+--
+-- Obe pomenita: solver ne zamudi prave rešitve in ne laže pri unsat.
+
+-- Zakaj smo obtičali (kratek seznam):
+--   1. `unsat` nima dokaza v tipu — Agda ne ve, da "res ni rešitve".
+--   2. Dokaz bi bil velika indukcija na `sat-search` / `decide` / `try-assign`
+--      (veliko primerov: pure literal, konflikt, cepitev, preskok dvojnika).
+--   3. Morali bi dokazati, da `cnf-vars φ` vsebuje vse spremenljivke, ki
+--      vplivajo na `eval-cnf` (duplikati so OK, manjkajoči indeks pa ne).
+--   4. `Assignment` je delna lista — težko povezati "preverili smo vse veje
+--      iskanja" z "za vsak ρ v univerzu".
+
+-- Okvir indukcije (samo na papirju — z luknjami, ne v živo kodi):
+--
+--   sat?-complete : ∀ {φ ρ} (p : eval-cnf ρ φ ≡ just true) → sat? φ ≡ sat ρ _
+--   sat-search-complete : ∀ vs ρ {φ} (p : ...) → sat-search vs ρ φ ≡ sat ρ _
+--   bazni [] : sat ρ p
+--   korak (v ∷ vs): indukcija + insert true/false + pure-value + konflikt  ← tukaj obtičamo
+
+-- Kar smo uspeli brez indukcije: iz danega dokaza p ročno zgradimo `SatResult`
+-- (to NI popolnost solverja — samo pove, da konstruktor `sat` ustreza tipu).
+sat-from-proof : ∀ {φ} {ρ : Assignment} (p : eval-cnf ρ φ ≡ just true) → SatResult φ
+sat-from-proof {ρ = ρ} p = sat ρ p
 
 
 ------------------------------------------------------------
@@ -383,10 +414,7 @@ clauses-to-cnf : Disjunct → List Disjunct → CNF
 clauses-to-cnf d []        = dis d
 clauses-to-cnf d (c ∷ cs)  = d ∧c clauses-to-cnf c cs
 
--- Tseytin: vhod NNF + naslednji svež indeks
---   vrnemo: (nov next-fresh, koren-literal podformule, klavzule)
--- Vsako notranje vozlišče dobi svežo spremenljivko x = pos n₂, klavzule pa
--- kodirajo ekvivalenco x ↔ (vozlišče). Implikacijo a → b zapišemo kot ¬a ∨ b.
+-- Tseytin:
 tseytin : NNF → ℕ → ℕ × Literal × List Disjunct
 -- list: literal že "predstavlja" sam sebe, brez svežih spremenljivk
 tseytin (lit ℓ)  n = n , ℓ , []
@@ -399,6 +427,7 @@ tseytin (a ∧n b) n with tseytin a n
         ∷ (neg n₂ ∨d lit lb)                            -- ¬x ∨ lb      (x → lb)
         ∷ (flip-lit la ∨d flip-lit lb ∨d lit (pos n₂))  -- ¬la∨¬lb∨x    (la∧lb → x)
         ∷ (cs-a ++ cs-b)
+
 -- x ↔ (la ∨ lb):  (x→la∨lb) ∧ (la→x) ∧ (lb→x)
 tseytin (a ∨n b) n with tseytin a n
 ... | n₁ , la , cs-a with tseytin b n₁
@@ -409,7 +438,6 @@ tseytin (a ∨n b) n with tseytin a n
         ∷ (flip-lit lb ∨d lit (pos n₂))                 -- ¬lb ∨ x      (lb → x)
         ∷ (cs-a ++ cs-b)
 
--- Vrhnja pretvorba: dodamo enojno klavzulo (koren = true)
 to-cnf : NNF → CNF
 to-cnf φ with tseytin φ (suc (max-var φ))
 ... | _ , root , cs = clauses-to-cnf (lit root) cs
