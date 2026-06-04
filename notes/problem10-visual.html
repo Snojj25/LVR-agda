@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Problem 10 — pravilnost SAT</title>
+<style>
+  :root{--bg:#0f1117;--panel:#171a23;--panel2:#1d212c;--ink:#e6e9ef;--muted:#9aa3b2;
+    --line:#2a2f3a;--accent:#7aa2f7;--green:#9ece6a;--red:#f7768e;--yellow:#e0af68;
+    --purple:#bb9af7;--cyan:#7dcfff;
+    --mono:"SFMono-Regular",ui-monospace,Menlo,Consolas,monospace}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:900px;margin:0 auto;padding:28px 18px 60px}
+  h1{font-size:24px;margin:0 0 6px}
+  .sub{color:var(--muted);margin:0 0 24px}
+  a{color:var(--accent)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:18px;margin:0 0 18px}
+  .card h2{font-size:16px;margin:0 0 12px}
+  pre{font-family:var(--mono);font-size:13px;line-height:1.6;white-space:pre-wrap;margin:0}
+  .k{color:var(--purple)} .t{color:var(--cyan)} .g{color:var(--green)} .r{color:var(--red)}
+  .flow{display:flex;flex-direction:column;gap:10px}
+  .node{border:1px solid var(--line);border-radius:8px;padding:12px;background:var(--panel2)}
+  .node .t{font-family:var(--mono);font-size:13px;color:var(--accent)}
+  .arrow{text-align:center;color:var(--muted);font-size:18px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:700px){.two{grid-template-columns:1fr}}
+  .ok{border-color:#345a32}.bad{border-color:#5a2c39}
+  .picker{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+  .picker button{cursor:pointer;font:inherit;font-size:13px;color:var(--ink);
+    background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 12px}
+  .picker button.on{border-color:var(--accent);color:var(--accent)}
+  #demo{margin-top:12px;font-family:var(--mono);font-size:13px;line-height:1.7}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Problem 10 — pravilnost</h1>
+  <p class="sub">Zdravost iz tipa <code>SatResult</code> · popolnost odprta ·
+    <a href="10-sat-correctness.md">10-sat-correctness.md</a> ·
+    <a href="problem9-visual.html">Problem 9</a></p>
+
+  <div class="card">
+    <h2>1. Zdravost — dokaz je že v `sat ρ p`</h2>
+    <div class="flow">
+      <div class="node ok">
+        <div class="t">data SatResult φ where</div>
+        <div>sat : (ρ) → <span class="g">eval-cnf ρ φ ≡ just true</span> → SatResult φ</div>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="node ok">
+        <div class="t">sat-search [] ρ φ with eval-cnf ρ φ in eq</div>
+        <div>... | just true = <span class="g">sat ρ eq</span>  — eq je dokaz p</div>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="node ok">
+        <div class="t">sat?-sound : sat? φ ≡ sat ρ p → eval-cnf ρ φ ≡ just true</div>
+        <div>sat?-sound _ = <span class="g">p</span>  — samo izlušči dokaz</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>2. Interaktivno: izluščitev dokaza</h2>
+    <p style="color:var(--muted);font-size:14px;margin:0 0 8px">Isti princip kot pri Problem 9 — če solver vrne SAT, imaš že <code>p</code>.</p>
+    <div class="picker" id="picker"></div>
+    <div id="demo"></div>
+  </div>
+
+  <div class="card">
+    <h2>3. Popolnost — zakaj ni v kodi</h2>
+    <div class="two">
+      <div class="node ok">
+        <div class="t">Želimo</div>
+        <pre>eval-cnf ρ φ ≡ just true
+  → sat? φ ≡ sat ρ _</pre>
+      </div>
+      <div class="node bad">
+        <div class="t">Obtičali</div>
+        <ul style="margin:8px 0 0;padding-left:18px;font-size:14px;color:var(--muted)">
+          <li><code>unsat</code> nima dokaza</li>
+          <li>indukcija na cel DPLL</li>
+          <li><code>cnf-vars</code> mora biti popoln</li>
+        </ul>
+      </div>
+    </div>
+    <p style="margin:14px 0 0;font-size:14px;color:var(--muted)">
+      <code>sat-from-proof</code> samo: iz znanega <code>p</code> zgradiš <code>SatResult</code> — to ni popolnost solverja.
+    </p>
+  </div>
+</div>
+<script>
+const lit=(v,pol)=>({v,pol});
+const EX=[
+  {name:"SAT — (x₀ ∨ ¬x₁)", clauses:[[lit(0,true),lit(1,false)]], sat:{0:true,1:false}},
+  {name:"UNSAT — tri klavzule", clauses:[[lit(0,true),lit(1,true)],[lit(0,false),lit(1,true)],[lit(1,false)]], sat:null},
+];
+const box=document.getElementById('picker'), demo=document.getElementById('demo');
+function show(i){
+  const e=EX[i]; [...box.children].forEach((b,j)=>b.classList.toggle('on',j===i));
+  if(!e.sat){
+    demo.innerHTML=`<span class="r">unsat</span> — brez dokaza p (prazen konstruktor).<br>`
+      +`Popolnost bi zahtevala: ∀ρ. eval-cnf ρ φ ≢ just true.`;
+    return;
+  }
+  const rho=Object.entries(e.sat).map(([k,v])=>`(${k}, ${v})`).join(' ∷ ');
+  demo.innerHTML=
+    `<span class="g">sat? φ ≡ sat ρ p</span><br>`
+    +`ρ = ${rho} []<br>`
+    +`<span class="g">p : eval-cnf ρ φ ≡ just true</span>  — dobimo na listu (eq / refl)<br>`
+    +`<span class="t">sat?-sound _ = p</span>  → zdravost v eni vrstici`;
+}
+EX.forEach((e,i)=>{const b=document.createElement('button');b.textContent=e.name;
+  b.onclick=()=>show(i);box.appendChild(b);});
+show(0);
+</script>
+</body>
+</html>

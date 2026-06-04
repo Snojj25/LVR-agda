@@ -1,20 +1,24 @@
-# Rešitev problemov 9–12 — razlaga na nizki ravni
+# Rešitev problemov 9–12 — pregled
 
-Ta zapis razloži rešitev problemov 9 do 12 v `src/Solution.agda`. Pri vsakem
-problemu opišemo cilj, ključno idejo in kako koda deluje korak za korakom.
+Koda: `src/Solution.agda` (od ~190). Za vsak problem je krajši vodič + HTML vizualizacija.
 
-Vsa koda je iz `src/Solution.agda` od vrstice ~190 naprej.
+| Problem | Markdown | HTML (v živo) |
+|---------|----------|----------------|
+| 9  | (v kodi + spodaj) | [problem9-visual.html](problem9-visual.html) |
+| 10 | [10-sat-correctness.md](10-sat-correctness.md) | [problem10-visual.html](problem10-visual.html) |
+| 11 | [11-tseytin.md](11-tseytin.md) | [problem11-visual.html](problem11-visual.html) |
+| 12 | [12-formula-sat.md](12-formula-sat.md) | [problem12-visual.html](problem12-visual.html) |
 
 ---
 
 ## Pregled
 
-| Problem | Cilj | Težavnost | Naša rešitev |
-|---------|------|-----------|---------------|
-| 9       | SAT-solver za CNF | (**/***) | Splitting/DPLL + dokaz pravilnosti v tipu |
-| 10      | Pravilnost SAT-solverja | (**) | Vgrajeno v `SatResult` (lema `sat?-sound`) |
-| 11      | NNF → CNF (equisat.) | (**/***) | Tseytinova transformacija |
-| 12      | SAT za poljubno Formulo | (*) | Komponiranje `Formula → NNF → CNF → SAT` + proof-carrying izhod |
+| Problem | Cilj | Naša rešitev |
+|---------|------|---------------|
+| 9  | SAT za CNF | DPLL + `SatResult` z dokazom |
+| 10 | Pravilnost | Zdravost iz tipa; popolnost odprta |
+| 11 | NNF → CNF | Tseytin (linearno) |
+| 12 | SAT za `Formula` | Cevovod + `eval` na originalu |
 
 **Filozofija:** namesto da bi naredili samo "delujoč" algoritem, vsi rezultati
 nosijo dokaze o pravilnosti tam, kjer je to mogoče (Problem 9 → Problem 10

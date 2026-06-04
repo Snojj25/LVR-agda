@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Problem 11 — Tseytin (vizualizacija)</title>
+<style>
+  :root{--bg:#0f1117;--panel:#171a23;--panel2:#1d212c;--ink:#e6e9ef;--muted:#9aa3b2;
+    --line:#2a2f3a;--accent:#7aa2f7;--green:#9ece6a;--red:#f7768e;--yellow:#e0af68;
+    --purple:#bb9af7;--cyan:#7dcfff;
+    --mono:"SFMono-Regular",ui-monospace,Menlo,Consolas,monospace}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1000px;margin:0 auto;padding:28px 18px 60px}
+  h1{font-size:24px;margin:0 0 6px}
+  .sub{color:var(--muted);margin:0 0 20px}
+  a{color:var(--accent)}
+  .live{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
+  .picker{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+  .picker button{cursor:pointer;font:inherit;font-size:13px;color:var(--ink);
+    background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 12px}
+  .picker button.on{border-color:var(--accent);color:var(--accent)}
+  .ctrl{display:flex;gap:8px;align-items:center;margin:0 0 16px;flex-wrap:wrap}
+  .ctrl button{cursor:pointer;font:inherit;background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;padding:7px 12px;color:var(--ink)}
+  .ctrl button:disabled{opacity:.4}
+  .ctrl .cnt{color:var(--muted);font-family:var(--mono);font-size:13px;margin-left:auto}
+  .grid{display:grid;grid-template-columns:1fr 1.2fr;gap:16px}
+  @media(max-width:800px){.grid{grid-template-columns:1fr}}
+  .box{border:1px solid var(--line);border-radius:10px;padding:14px;background:var(--panel2)}
+  .box h3{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  .tree{font-family:var(--mono);font-size:14px;line-height:1.8}
+  .tree .hi{color:var(--yellow);outline:1px dashed var(--accent);padding:0 4px;border-radius:4px}
+  .step{font-size:14px;margin:0 0 8px}
+  .step .fn{font-family:var(--mono);color:var(--accent)}
+  .clauses{display:flex;flex-direction:column;gap:6px;max-height:320px;overflow:auto}
+  .cl{font-family:var(--mono);font-size:13px;padding:6px 10px;border-radius:6px;border:1px solid var(--line)}
+  .cl.new{border-color:var(--yellow);background:#2a241688}
+  .cl.old{opacity:.7}
+  .cnf{margin-top:12px;font-family:var(--mono);font-size:13px;color:var(--green)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Problem 11 — Tseytin (v živo)</h1>
+  <p class="sub">Korak po korak: NNF drevo → nova xᵢ → klavzule ·
+    <a href="11-tseytin.md">11-tseytin.md</a></p>
+
+  <div class="live">
+    <div class="picker" id="picker"></div>
+    <div class="ctrl">
+      <button id="prev">◀</button>
+      <button id="next">▶</button>
+      <button id="reset">⏮</button>
+      <span class="cnt" id="cnt">0 / 0</span>
+    </div>
+    <div class="grid">
+      <div class="box">
+        <h3>NNF (označeno vozlišče)</h3>
+        <div class="tree" id="tree"></div>
+        <p class="step" id="msg"></p>
+      </div>
+      <div class="box">
+        <h3>Dodane klavzule</h3>
+        <div class="clauses" id="clauses"></div>
+        <div class="cnf" id="cnf"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const lit=(v,pol)=>({k:'lit',v,pol});
+const and=(a,b)=>({k:'and',a,b});
+const or=(a,b)=>({k:'or',a,b});
+const EX=[
+  {name:'x₀ ∧ x₁ (oba lista)', nnf:and(lit(0,true),lit(1,true))},
+  {name:'x₀ ∨ x₁', nnf:or(lit(0,true),lit(1,true))},
+  {name:'(x₀ ∧ x₁) ∨ x₂', nnf:or(and(lit(0,true),lit(1,true)),lit(2,true))},
+];
+function maxVar(n){ if(n.k==='lit')return n.v; return Math.max(maxVar(n.a),maxVar(n.b)); }
+function litStr(l){ return (l.pol?'':'¬')+(typeof l.v==='number'?'x'+l.v:l.v); }
+function flip(l){ return {v:l.v, pol:!l.pol}; }
+function clauseStr(cl){ return cl.map(l=>litStr(l)).join(' ∨ '); }
+
+function tseytinRun(nnf){
+  const steps=[];
+  const allClauses=[];
+  function walk(node, n, path){
+    if(node.k==='lit'){
+      steps.push({path,node,msg:`list ${litStr({v:node.v,pol:node.pol})} — brez nove x`, newCl:[], lit:{v:node.v,pol:node.pol}, n});
+      return {n, lit:{v:node.v,pol:node.pol}};
+    }
+    const A=walk(node.a,n,path+'L');
+    const B=walk(node.b,A.n,path+'R');
+    const x=A.n+1; // suc n₂ po obeh poddrevesih
+    const la=A.lit, lb=B.lit;
+    let newCl, msg;
+    if(node.k==='and'){
+      newCl=[
+        [{v:x,pol:false},la],
+        [{v:x,pol:false},lb],
+        [flip(la),flip(lb),{v:x,pol:true}],
+      ];
+      msg=`∧: nova x${x} ↔ (${litStr(la)} ∧ ${litStr(lb)}) — 3 klavzule`;
+    } else {
+      newCl=[
+        [{v:x,pol:false},la,lb],
+        [flip(la),{v:x,pol:true}],
+        [flip(lb),{v:x,pol:true}],
+      ];
+      msg=`∨: nova x${x} ↔ (${litStr(la)} ∨ ${litStr(lb)}) — 3 klavzule`;
+    }
+    newCl.forEach(c=>allClauses.push(c));
+    steps.push({path,node,msg,newCl,lit:{v:x,pol:true},n:x});
+    return {n:x, lit:{v:x,pol:true}};
+  }
+  const start=maxVar(nnf)+1;
+  const root=walk(nnf,start,'');
+  steps.push({final:true, root:root.lit, msg:`to-cnf: koren = ${litStr(root.lit)} + vse klavzule`});
+  return {steps, allClauses, root:root.lit};
+}
+
+function renderTree(nnf, path, curPath){
+  if(nnf.k==='lit'){
+    const s=litStr({v:nnf.v,pol:nnf.pol});
+    return curPath===path?`<span class="hi">${s}</span>`:s;
+  }
+  const op=nnf.k==='and'?'∧n':'∨n';
+  const inner=`(${renderTree(nnf.a,path,curPath+'L')} ${op} ${renderTree(nnf.b,path,curPath+'R')})`;
+  return curPath===path?`<span class="hi">${inner}</span>`:inner;
+}
+
+let STEPS=[], i=0, CUR=null, RUN=null;
+const picker=document.getElementById('picker');
+function render(){
+  const st=STEPS[i];
+  document.getElementById('tree').innerHTML= st.final?renderTree(CUR,'','')
+    :renderTree(CUR, st.path||'', st.path||'');
+  document.getElementById('msg').innerHTML= st.final?`<span class="fn">to-cnf</span> ${st.msg}`
+    :`<span class="fn">tseytin</span> ${st.msg}`;
+  const box=document.getElementById('clauses'); box.innerHTML='';
+  let acc=[];
+  STEPS.slice(0,i+1).forEach(s=>{
+    if(s.newCl) s.newCl.forEach(c=>{
+      const isNew = s===st;
+      const d=document.createElement('div');
+      d.className='cl '+(isNew?'new':'old');
+      d.textContent=clauseStr(c);
+      box.appendChild(d);
+      acc.push(c);
+    });
+  });
+  if(st.final){
+    const cnf='('+litStr(st.root)+') ∧\n'+acc.map(c=>'('+clauseStr(c)+')').join(' ∧\n');
+    document.getElementById('cnf').textContent='CNF ≈\n'+cnf;
+  } else document.getElementById('cnf').textContent='';
+  document.getElementById('cnt').textContent=`${i+1} / ${STEPS.length}`;
+  document.getElementById('prev').disabled=i===0;
+  document.getElementById('next').disabled=i===STEPS.length-1;
+}
+function load(idx){
+  CUR=EX[idx].nnf; RUN=tseytinRun(CUR); STEPS=RUN.steps; i=0;
+  [...picker.children].forEach((b,j)=>b.classList.toggle('on',j===idx));
+  render();
+}
+EX.forEach((e,idx)=>{const b=document.createElement('button');b.textContent=e.name;
+  b.onclick=()=>load(idx);picker.appendChild(b);});
+document.getElementById('prev').onclick=()=>{if(i>0){i--;render();}};
+document.getElementById('next').onclick=()=>{if(i<STEPS.length-1){i++;render();}};
+document.getElementById('reset').onclick=()=>{i=0;render();};
+load(0);
+</script>
+</body>
+</html>

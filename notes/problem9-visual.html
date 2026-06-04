@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Problem 9 — DPLL SAT-solver (vizualizacija)</title>
+<style>
+  :root{
+    --bg:#0f1117; --panel:#171a23; --panel2:#1d212c; --ink:#e6e9ef;
+    --muted:#9aa3b2; --line:#2a2f3a; --accent:#7aa2f7; --green:#9ece6a;
+    --red:#f7768e; --yellow:#e0af68; --purple:#bb9af7; --cyan:#7dcfff;
+    --mono:"SFMono-Regular",ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:32px 20px 80px}
+  header h1{font-size:26px; margin:0 0 4px}
+  header p{color:var(--muted); margin:0 0 28px}
+  .legend{display:flex; flex-wrap:wrap; gap:10px; margin:18px 0 30px}
+  .chip{font-size:12.5px; padding:4px 10px; border-radius:999px; border:1px solid var(--line)}
+  .chip.var{color:var(--cyan)} .chip.conf{color:var(--red)}
+  .chip.pure{color:var(--yellow)} .chip.search{color:var(--green)}
+
+  .phase{
+    background:var(--panel); border:1px solid var(--line);
+    border-radius:14px; margin:0 0 22px; overflow:hidden;
+  }
+  .phase > .head{
+    display:flex; align-items:center; gap:12px; padding:14px 18px;
+    border-bottom:1px solid var(--line); background:var(--panel2);
+  }
+  .num{
+    width:30px; height:30px; flex:0 0 30px; border-radius:8px;
+    display:grid; place-items:center; font-weight:700; font-size:14px;
+    background:#222838; color:var(--accent);
+  }
+  .head h2{font-size:17px; margin:0}
+  .head .sub{color:var(--muted); font-size:13px; margin-left:auto}
+  .body{display:grid; grid-template-columns:1fr 1fr; gap:0}
+  @media(max-width:820px){.body{grid-template-columns:1fr}}
+  .col{padding:16px 18px}
+  .col + .col{border-left:1px solid var(--line)}
+  @media(max-width:820px){.col + .col{border-left:0; border-top:1px solid var(--line)}}
+  .col h3{font-size:12px; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--muted); margin:0 0 10px}
+  pre{margin:0; font-family:var(--mono); font-size:13px; line-height:1.55;
+    white-space:pre-wrap; word-break:break-word}
+  code{font-family:var(--mono)}
+  .k{color:var(--purple)} .t{color:var(--cyan)} .f{color:var(--accent)}
+  .c{color:var(--muted); font-style:italic} .s{color:var(--green)}
+  .n{color:var(--yellow)}
+  ul{margin:6px 0 0; padding-left:18px} li{margin:3px 0}
+  .tag{display:inline-block; font-size:11px; padding:1px 7px; border-radius:6px;
+    border:1px solid var(--line); color:var(--muted); margin-right:6px}
+
+  /* flow diagram */
+  .flow{background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:22px 18px; margin:0 0 22px}
+  .flow h2{font-size:17px; margin:0 0 16px}
+  .nodes{display:flex; flex-direction:column; gap:14px}
+  .node{border:1px solid var(--line); border-radius:10px; padding:12px 14px;
+    background:var(--panel2)}
+  .node .name{font-family:var(--mono); font-weight:700; color:var(--green)}
+  .node .desc{color:var(--muted); font-size:13.5px; margin-top:3px}
+  .branch{margin-top:8px; display:flex; flex-direction:column; gap:6px}
+  .arm{font-family:var(--mono); font-size:12.5px; padding:6px 10px;
+    border-radius:8px; background:#11141c; border:1px solid var(--line)}
+  .arm b{font-weight:700}
+  .ok{color:var(--green)} .bad{color:var(--red)} .mid{color:var(--yellow)}
+
+  /* example trace */
+  .trace{background:var(--panel); border:1px solid var(--line);
+    border-radius:14px; padding:22px 18px}
+  .trace h2{font-size:17px; margin:0 0 6px}
+  .trace .formula{font-family:var(--mono); color:var(--cyan); margin:0 0 16px}
+  .step{display:flex; gap:12px; padding:10px 0; border-top:1px solid var(--line)}
+  .step:first-of-type{border-top:0}
+  .dot{width:24px; height:24px; flex:0 0 24px; border-radius:50%;
+    display:grid; place-items:center; font-size:12px; font-weight:700;
+    background:#222838; color:var(--accent)}
+  .step .txt{font-size:14px}
+  .step .txt code{color:var(--yellow)}
+  .result{margin-top:14px; padding:12px 14px; border-radius:10px;
+    background:#16241a; border:1px solid #2c4a32; color:var(--green);
+    font-family:var(--mono); font-size:13.5px}
+  footer{color:var(--muted); font-size:12.5px; margin-top:30px; text-align:center}
+
+  /* live visualizer */
+  .live{background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:22px 18px; margin:0 0 22px}
+  .live h2{font-size:17px; margin:0 0 4px}
+  .live > p.lead{color:var(--muted); font-size:13.5px; margin:0 0 16px}
+  .picker{display:flex; flex-wrap:wrap; gap:8px; margin:0 0 16px}
+  .picker button{cursor:pointer; font:inherit; font-size:13px; color:var(--ink);
+    background:var(--panel2); border:1px solid var(--line); border-radius:8px;
+    padding:7px 12px}
+  .picker button.active{border-color:var(--accent); color:var(--accent)}
+  .controls{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 16px}
+  .controls button{cursor:pointer; font:inherit; color:var(--ink);
+    background:var(--panel2); border:1px solid var(--line); border-radius:8px;
+    padding:7px 12px; min-width:42px}
+  .controls button:hover{border-color:var(--accent)}
+  .controls button:disabled{opacity:.4; cursor:default}
+  .controls .count{color:var(--muted); font-size:13px; margin-left:auto;
+    font-family:var(--mono)}
+  .controls input[type=range]{width:110px}
+  .stage{display:grid; grid-template-columns:1.1fr 1fr; gap:16px}
+  @media(max-width:820px){.stage{grid-template-columns:1fr}}
+  .box{border:1px solid var(--line); border-radius:10px; padding:14px;
+    background:var(--panel2)}
+  .box h4{margin:0 0 10px; font-size:12px; text-transform:uppercase;
+    letter-spacing:.08em; color:var(--muted)}
+  .now{display:flex; align-items:flex-start; gap:10px; margin:0 0 6px}
+  .now .pchip{font-size:11px; padding:2px 9px; border-radius:999px;
+    border:1px solid var(--line); white-space:nowrap; margin-top:2px}
+  .pchip.var{color:var(--cyan); border-color:#2c5a6b}
+  .pchip.conf{color:var(--red); border-color:#5a2c39}
+  .pchip.pure{color:var(--yellow); border-color:#5a4a2c}
+  .pchip.search{color:var(--green); border-color:#345a32}
+  .pchip.sat{color:var(--green); border-color:#345a32}
+  .pchip.unsat{color:var(--red); border-color:#5a2c39}
+  .now .nowtxt{font-size:14px}
+  .now .nowtxt .fn{font-family:var(--mono); color:var(--accent)}
+  .rho{display:flex; flex-wrap:wrap; gap:6px; min-height:30px}
+  .rho .vchip{font-family:var(--mono); font-size:13px; padding:3px 9px;
+    border-radius:7px; border:1px solid var(--line)}
+  .rho .vchip.t{color:var(--green); border-color:#345a32; background:#16241a}
+  .rho .vchip.f{color:var(--red); border-color:#5a2c39; background:#241619}
+  .rho .empty{color:var(--muted); font-size:13px; font-style:italic}
+  .clauses{display:flex; flex-direction:column; gap:8px}
+  .clause{display:flex; flex-wrap:wrap; align-items:center; gap:6px;
+    border:1px solid var(--line); border-radius:8px; padding:7px 10px;
+    font-family:var(--mono); font-size:13.5px}
+  .clause.satC{border-color:#345a32; background:#13201688}
+  .clause.confC{border-color:#5a2c39; background:#24161988}
+  .clause .lbl{color:var(--muted); font-size:11px; margin-left:auto}
+  .clause .lt{padding:1px 6px; border-radius:5px}
+  .clause .lt.t{color:var(--green); background:#16241a}
+  .clause .lt.f{color:var(--red); background:#241619}
+  .clause .lt.u{color:var(--muted)}
+  .clause .lt.focus{outline:1px dashed var(--accent); outline-offset:1px}
+  .clause .orop{color:var(--muted)}
+  .verdict{margin-top:14px; padding:11px 14px; border-radius:10px;
+    font-family:var(--mono); font-size:13.5px; display:none}
+  .verdict.show{display:block}
+  .verdict.satV{background:#16241a; border:1px solid #2c4a32; color:var(--green)}
+  .verdict.unsatV{background:#241619; border:1px solid #4a2c32; color:var(--red)}
+
+  /* proof panel */
+  .proofbox{margin-top:16px}
+  .proofbox .sig{font-family:var(--mono); font-size:12.5px; color:var(--muted);
+    margin:0 0 12px; line-height:1.7}
+  .proofbox .sig b{color:var(--purple)}
+  .proofbox .sig .hl{color:var(--green)}
+  .proof{font-family:var(--mono); font-size:13px; line-height:1.7;
+    border-left:2px solid var(--line); padding-left:14px}
+  .proof.dim{opacity:.55}
+  .proof .ln{display:flex; gap:10px}
+  .proof .op{color:var(--muted); width:14px; flex:0 0 14px; text-align:right}
+  .proof .ex{color:var(--ink)}
+  .proof .cm{color:var(--muted); font-style:italic}
+  .proof .jt{color:var(--green)}
+  .proof .refl{margin-top:8px; color:var(--cyan)}
+  .proof .refl b{color:var(--purple)}
+  .proof .none{color:var(--red)}
+  .proof .wait{color:var(--yellow)}
+  .tv{color:var(--green)} .fv{color:var(--red)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Problem 9 — DPLL SAT-solver</h1>
+    <p>Vizualni vodič: kaj počne vsak del kode v <code>src/Solution.agda</code>.</p>
+  </header>
+
+  <div class="legend">
+    <span class="chip var">spremenljivke</span>
+    <span class="chip conf">konflikt (unit propagation)</span>
+    <span class="chip pure">pure literal</span>
+    <span class="chip search">iskanje (splitting)</span>
+  </div>
+
+  <!-- PHASE 1 -->
+  <section class="phase">
+    <div class="head"><div class="num">1</div><h2>Spremenljivke</h2>
+      <span class="sub">na katerih indeksih bomo prirejali</span></div>
+    <div class="body">
+      <div class="col"><h3>Koda</h3>
+<pre><span class="f">lit-var</span> : Literal → ℕ
+<span class="f">lit-var</span> (<span class="t">pos</span> n) = n
+<span class="f">lit-var</span> (<span class="t">neg</span> n) = n
+
+<span class="f">dis-vars</span> : Disjunct → List ℕ
+<span class="f">cnf-vars</span> : CNF → List ℕ</pre>
+      </div>
+      <div class="col"><h3>Kaj dela</h3>
+        <ul>
+          <li><code>lit-var</code> — iz literala vzame številko spremenljivke (<code>pos 3</code> in <code>neg 3</code> → <code>3</code>).</li>
+          <li><code>dis-vars</code> / <code>cnf-vars</code> — zberejo <b>vse</b> indekse v klavzuli oz. celotni formuli.</li>
+          <li>Dvojniki so dovoljeni — iskanje jih kasneje preskoči.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- PHASE 2 -->
+  <section class="phase">
+    <div class="head"><div class="num">2</div><h2>Konflikt — unit propagation</h2>
+      <span class="sub">zaznaj v celoti napačno klavzulo</span></div>
+    <div class="body">
+      <div class="col"><h3>Koda</h3>
+<pre><span class="f">lit-false?</span> : Assignment → Literal → Bool
+<span class="f">lit-false?</span> ρ ℓ <span class="k">with</span> eval-lit ρ ℓ
+... | <span class="t">just</span> <span class="s">false</span> = <span class="s">true</span>
+... | _          = <span class="s">false</span>
+
+<span class="f">clause-conflict?</span> ρ (<span class="t">lit</span> ℓ)  = lit-false? ρ ℓ
+<span class="f">clause-conflict?</span> ρ (ℓ ∨d d) = lit-false? ρ ℓ <span class="k">and</span> clause-conflict? ρ d
+
+<span class="f">cnf-conflict?</span> ρ (<span class="t">dis</span> d)  = clause-conflict? ρ d
+<span class="f">cnf-conflict?</span> ρ (d ∧c φ) = clause-conflict? ρ d <span class="k">or</span> cnf-conflict? ρ φ</pre>
+      </div>
+      <div class="col"><h3>Kaj dela</h3>
+        <ul>
+          <li><code>lit-false?</code> — je literal pod ρ že <b>false</b>?</li>
+          <li><code>clause-conflict?</code> — so <b>vsi</b> literali klavzule false? (klavzule ni več mogoče zadovoljiti)</li>
+          <li><code>cnf-conflict?</code> — je <b>katera koli</b> klavzula v konfliktu?</li>
+        </ul>
+        <p class="c">To je jedro unit propagation: vejo, ki ubije neko klavzulo, takoj zavržemo.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- PHASE 3 -->
+  <section class="phase">
+    <div class="head"><div class="num">3</div><h2>Pure literal</h2>
+      <span class="sub">ena polariteta → fiksna vrednost</span></div>
+    <div class="body">
+      <div class="col"><h3>Koda</h3>
+<pre><span class="f">cnf-pos?</span> : ℕ → CNF → Bool   <span class="c">-- nastopa pozitivno?</span>
+<span class="f">cnf-neg?</span> : ℕ → CNF → Bool   <span class="c">-- nastopa negativno?</span>
+
+<span class="f">pure-value</span> : ℕ → CNF → Maybe Bool
+<span class="f">pure-value</span> v φ <span class="k">with</span> cnf-pos? v φ | cnf-neg? v φ
+... | <span class="s">true</span>  | <span class="s">false</span> = <span class="t">just</span> <span class="s">true</span>
+... | <span class="s">false</span> | <span class="s">true</span>  = <span class="t">just</span> <span class="s">false</span>
+... | _     | _     = <span class="t">nothing</span></pre>
+      </div>
+      <div class="col"><h3>Kaj dela</h3>
+        <ul>
+          <li>Pogleda, s kakšno polariteto se <code>v</code> pojavi v φ.</li>
+          <li>Samo <span class="ok">pozitivno</span> → <code>just true</code>.</li>
+          <li>Samo <span class="bad">negativno</span> → <code>just false</code>.</li>
+          <li>Mešano / je ni → <code>nothing</code> (ni pure, treba bo cepiti).</li>
+        </ul>
+        <p class="c">Pure literal lahko fiksiramo brez cepitve — drugje ne škodi.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- PHASE 4 -->
+  <section class="phase">
+    <div class="head"><div class="num">4</div><h2>Iskanje — splitting</h2>
+      <span class="sub">tri medsebojno rekurzivne funkcije</span></div>
+    <div class="body">
+      <div class="col"><h3>Koda</h3>
+<pre><span class="k">data</span> <span class="t">SatResult</span> (φ : CNF) : Set <span class="k">where</span>
+  <span class="t">sat</span>   : (ρ : Assignment) → eval-cnf ρ φ ≡ just true → SatResult φ
+  <span class="t">unsat</span> : SatResult φ
+
+<span class="f">sat-search</span> [] ρ φ <span class="k">with</span> eval-cnf ρ φ <span class="k">in</span> eq
+... | <span class="t">just</span> <span class="s">true</span> = <span class="t">sat</span> ρ eq
+... | _         = <span class="t">unsat</span>
+<span class="f">sat-search</span> (v ∷ vs) ρ φ <span class="k">with</span> lookup v ρ
+... | <span class="t">just</span> _  = sat-search vs ρ φ
+... | <span class="t">nothing</span> = decide v vs ρ φ
+
+<span class="f">decide</span> v vs ρ φ <span class="k">with</span> pure-value v φ
+... | <span class="t">just</span> b  = try-assign v b vs ρ φ
+... | <span class="t">nothing</span> <span class="k">with</span> try-assign v <span class="s">true</span> vs ρ φ
+...   | <span class="t">sat</span> ρ′ p = sat ρ′ p
+...   | <span class="t">unsat</span>    = try-assign v <span class="s">false</span> vs ρ φ
+
+<span class="f">try-assign</span> v b vs ρ φ <span class="k">with</span> cnf-conflict? (insert v b ρ) φ
+... | <span class="s">true</span>  = <span class="t">unsat</span>
+... | <span class="s">false</span> = sat-search vs (insert v b ρ) φ
+
+<span class="f">sat?</span> φ = sat-search (cnf-vars φ) empty φ</pre>
+      </div>
+      <div class="col"><h3>Kaj dela</h3>
+        <ul>
+          <li><code>SatResult</code> — <span class="ok">sat ρ p</span> nosi <b>dokaz</b> <code>p</code>; <span class="bad">unsat</span> = ni rešitve.</li>
+          <li><code>sat-search</code> — glavna zanka; ob praznem seznamu ovrednoti formulo (tu nastane dokaz <code>eq</code>).</li>
+          <li><code>decide</code> — pure literal (ena veja) ali cepitev (true, nato false).</li>
+          <li><code>try-assign</code> — priredi <code>v←b</code>, a konfliktno vejo takoj zavrže.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- FLOW -->
+  <div class="flow">
+    <h2>Kako se faze povežejo (en korak iskanja)</h2>
+    <div class="nodes">
+      <div class="node">
+        <div class="name">sat-search (v ∷ vs)</div>
+        <div class="desc">Vzame prvo spremenljivko. Če je že prirejena → preskoči, sicer → <code>decide</code>.</div>
+        <div class="branch">
+          <div class="arm"><b class="mid">lookup v ρ = just _</b> → preskoči, nadaljuj z <code>vs</code></div>
+          <div class="arm"><b>lookup v ρ = nothing</b> → <code>decide v vs ρ φ</code></div>
+        </div>
+      </div>
+      <div class="node">
+        <div class="name">decide</div>
+        <div class="desc">Izbere strategijo glede na <code>pure-value</code>.</div>
+        <div class="branch">
+          <div class="arm"><b class="mid">pure → just b</b> → <code>try-assign v b</code> (samo ena veja)</div>
+          <div class="arm"><b>ni pure</b> → poskusi <code>v=true</code>, če pade, še <code>v=false</code></div>
+        </div>
+      </div>
+      <div class="node">
+        <div class="name">try-assign</div>
+        <div class="desc">Doda <code>v←b</code> v ρ in preveri konflikt.</div>
+        <div class="branch">
+          <div class="arm"><b class="bad">konflikt</b> → <code>unsat</code> (rez veje)</div>
+          <div class="arm"><b class="ok">ni konflikta</b> → <code>sat-search vs</code> (naprej)</div>
+        </div>
+      </div>
+      <div class="node">
+        <div class="name">sat-search []</div>
+        <div class="desc">Ni več spremenljivk → <code>eval-cnf ρ φ</code>.</div>
+        <div class="branch">
+          <div class="arm"><b class="ok">just true</b> → <code>sat ρ eq</code> (eq = dokaz)</div>
+          <div class="arm"><b class="bad">sicer</b> → <code>unsat</code></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TRACE -->
+  <div class="trace">
+    <h2>Primer izvajanja</h2>
+    <p class="formula">φ = (x₀ ∨ ¬x₁)&nbsp;&nbsp;&nbsp;cnf-vars φ = [0, 1]</p>
+    <div class="step"><div class="dot">1</div><div class="txt">
+      <code>sat-search [0,1] [] φ</code> → 0 ni prirejen → <code>decide 0 …</code></div></div>
+    <div class="step"><div class="dot">2</div><div class="txt">
+      <code>pure-value 0 φ</code>: 0 nastopa samo pozitivno → <b class="ok">just true</b> (pure!)</div></div>
+    <div class="step"><div class="dot">3</div><div class="txt">
+      <code>try-assign 0 true</code>: ni konflikta → <code>sat-search [1] [(0,true)] φ</code></div></div>
+    <div class="step"><div class="dot">4</div><div class="txt">
+      <code>pure-value 1 φ</code>: 1 nastopa samo negativno → <b class="bad">just false</b> (pure!)</div></div>
+    <div class="step"><div class="dot">5</div><div class="txt">
+      <code>try-assign 1 false</code>: ni konflikta → <code>sat-search [] [(1,false),(0,true)] φ</code></div></div>
+    <div class="step"><div class="dot">6</div><div class="txt">
+      <code>eval-cnf ρ φ</code> = (true ∨ ¬false) = <b class="ok">just true</b></div></div>
+    <div class="result">⇒ sat [(1,false),(0,true)] eq&nbsp;&nbsp;&nbsp;(brez cepitve — oba literala sta pure)</div>
+  </div>
+
+  <!-- LIVE -->
+  <div class="live">
+    <h2>V živo — korak za korakom</h2>
+    <p class="lead">Izberi formulo in se sprehodi skozi algoritem. Literali se barvajo glede na trenutni ρ
+      (<span style="color:var(--green)">true</span> / <span style="color:var(--red)">false</span> /
+      <span style="color:var(--muted)">nedoločen</span>), klavzula v konfliktu pordeči, zadovoljena pozeleni.</p>
+
+    <div class="picker" id="picker"></div>
+
+    <div class="controls">
+      <button id="btnReset" title="Na začetek">⏮</button>
+      <button id="btnPrev" title="Korak nazaj">◀</button>
+      <button id="btnPlay" title="Predvajaj">▶</button>
+      <button id="btnNext" title="Korak naprej">▶▏</button>
+      <label style="color:var(--muted);font-size:12.5px">hitrost
+        <input type="range" id="speed" min="200" max="1600" step="100" value="800"></label>
+      <span class="count" id="count">0 / 0</span>
+    </div>
+
+    <div class="stage">
+      <div class="box">
+        <h4>Trenutni korak</h4>
+        <div class="now">
+          <span class="pchip" id="phase">—</span>
+          <span class="nowtxt"><span class="fn" id="fn"></span> <span id="msg"></span></span>
+        </div>
+        <h4 style="margin-top:16px">Prirejanje ρ</h4>
+        <div class="rho" id="rho"></div>
+        <div class="verdict" id="verdict"></div>
+      </div>
+      <div class="box">
+        <h4>Formula φ (pod ρ)</h4>
+        <div class="clauses" id="clauses"></div>
+      </div>
+    </div>
+
+    <div class="box proofbox">
+      <h4>Dokaz, ki ga nese <code>sat ρ p</code></h4>
+      <p class="sig"><b>data</b> SatResult (φ : CNF) <b>where</b><br>
+        &nbsp;&nbsp;sat : (ρ : Assignment) → <span class="hl">eval-cnf ρ φ ≡ just true</span> → SatResult φ<br>
+        Drugi argument <code>p</code> je <b>dokaz</b> te enakosti. Dobimo ga iz
+        <code>sat-search [] ρ φ <b>with</b> eval-cnf ρ φ <b>in</b> eq → sat ρ eq</code>:
+        ker se <code>eval-cnf ρ φ</code> zares izračuna v <span class="hl">just true</span>,
+        je <code>eq</code> v bistvu <code>refl</code>. Spodaj je ta izračun.</p>
+      <div class="proof" id="proof"></div>
+    </div>
+  </div>
+
+  <footer>Vizualizacija za <code>src/Solution.agda</code> · Problem 9 (DPLL) · Logika v računalništvu</footer>
+</div>
+
+<script>
+(function(){
+  // literal: {v:Number, pol:Boolean}  (pol=true → xv, pol=false → ¬xv)
+  const lit = (v,pol)=>({v,pol});
+  const EXAMPLES = [
+    { name:"(x₀ ∨ ¬x₁)  — pure", clauses:[[lit(0,true),lit(1,false)]] },
+    { name:"(x₀ ∨ x₁) ∧ (¬x₀ ∨ x₁) ∧ (¬x₁)  — UNSAT",
+      clauses:[[lit(0,true),lit(1,true)],[lit(0,false),lit(1,true)],[lit(1,false)]] },
+    { name:"(x₀ ∨ x₁) ∧ (¬x₁ ∨ x₂)  — cepitev",
+      clauses:[[lit(0,true),lit(1,true)],[lit(1,false),lit(2,true)]] },
+    { name:"(x₀) ∧ (¬x₀ ∨ x₁) ∧ (¬x₁)  — konflikt po propagaciji",
+      clauses:[[lit(0,true)],[lit(0,false),lit(1,true)],[lit(1,false)]] },
+  ];
+
+  // ---- solver, instrumented to record steps (mirrors Solution.agda) ----
+  function solve(clauses){
+    const steps=[];
+    const evalLit=(r,l)=> r[l.v]===undefined ? null : (l.pol ? r[l.v] : !r[l.v]);
+    const litFalse=(r,l)=> evalLit(r,l)===false;
+    const clauseConflict=(r,cl)=> cl.every(l=>litFalse(r,l));
+    const cnfConflict=(r)=> clauses.some(cl=>clauseConflict(r,cl));
+    const cnfPos=(v)=> clauses.some(cl=>cl.some(l=>l.v===v&&l.pol));
+    const cnfNeg=(v)=> clauses.some(cl=>cl.some(l=>l.v===v&&!l.pol));
+    const pureValue=(v)=>{const p=cnfPos(v),n=cnfNeg(v);
+      return (p&&!n)?true:(!p&&n)?false:null;};
+    const evalCnf=(r)=> clauses.every(cl=>cl.some(l=>evalLit(r,l)===true));
+    const vars=clauses.flatMap(cl=>cl.map(l=>l.v)); // z dvojniki (kot cnf-vars)
+    const push=(e)=> steps.push(Object.assign({rho:Object.assign({},e.rho)},e));
+
+    function search(vs,r){
+      if(vs.length===0){
+        const ok=evalCnf(r);
+        push({phase:'search',fn:'sat-search []',
+          msg: ok?'eval-cnf ρ φ = just true  →  sat ρ eq':'eval-cnf ρ φ ≠ true  →  unsat',
+          rho:r, focus:null});
+        return ok?{kind:'sat',rho:Object.assign({},r)}:{kind:'unsat'};
+      }
+      const v=vs[0], rest=vs.slice(1);
+      if(r[v]!==undefined){
+        push({phase:'search',fn:'sat-search',msg:`x${v} je že prirejen → preskoči`,rho:r,focus:v});
+        return search(rest,r);
+      }
+      push({phase:'search',fn:'sat-search',msg:`x${v} je nov → decide`,rho:r,focus:v});
+      return decide(v,rest,r);
+    }
+    function decide(v,vs,r){
+      const pv=pureValue(v);
+      if(pv!==null){
+        push({phase:'pure',fn:'decide',msg:`pure-value x${v} = ${pv}  (samo ena polariteta)`,rho:r,focus:v});
+        return tryAssign(v,pv,vs,r);
+      }
+      push({phase:'pure',fn:'decide',msg:`x${v} ni pure → cepitev (najprej true)`,rho:r,focus:v});
+      const t=tryAssign(v,true,vs,r);
+      if(t.kind==='sat') return t;
+      push({phase:'search',fn:'decide',msg:`veja x${v}=true je unsat → poskusi x${v}=false`,rho:r,focus:v});
+      return tryAssign(v,false,vs,r);
+    }
+    function tryAssign(v,b,vs,r){
+      const r2=Object.assign({},r,{[v]:b});
+      const conf=cnfConflict(r2);
+      push({phase:'conf',fn:'try-assign',
+        msg:`x${v} ← ${b};  konflikt? ${conf?'DA → unsat (rez veje)':'ne → nadaljuj'}`,
+        rho:r2, focus:v});
+      if(conf) return {kind:'unsat'};
+      return search(vs,r2);
+    }
+
+    push({phase:'var',fn:'sat?',msg:`cnf-vars φ = [${vars.join(', ')}]  (prazen ρ)`,rho:{},focus:null});
+    const res=search(vars,{});
+    push({phase:res.kind, fn:'rezultat',
+      msg: res.kind==='sat'?'SAT — našli prirejanje ρ in dokaz p':'UNSAT — ni zadovoljivega prirejanja',
+      rho: res.kind==='sat'?res.rho:{}, focus:null, done:res.kind});
+    return steps;
+  }
+
+  // ---- rendering ----
+  const litStr=(l)=> (l.pol?'':'¬')+'x'+l.v;
+  function evalLitView(r,l){ if(r[l.v]===undefined) return 'u'; return (l.pol?r[l.v]:!r[l.v])?'t':'f'; }
+  const cnfTrue=(clauses,r)=> clauses.every(cl=>cl.some(l=>evalLitView(r,l)==='t'))
+    && clauses.every(cl=>cl.every(l=>r[l.v]!==undefined));
+
+  // gradnja dokaza: izračun eval-cnf ρ φ ⇝ just true (po definicijah)
+  function buildProof(clauses, rho){
+    const single = clauses.length===1;
+    const litName = l => (l.pol?'':'¬')+'x'+l.v;                 // simbolično ime
+    const litSub  = l => l.pol ? boolSpan(rho[l.v]) : '¬'+boolSpan(rho[l.v]);
+    const litRed  = l => boolSpan(l.pol?rho[l.v]:!rho[l.v]);     // po not-redukciji
+    const clause = (cls, f) => cls.length===1 ? f(cls[0]) : '('+cls.map(f).join(' ∨ ')+')';
+    const join = (parts) => single ? parts[0] : parts.join(' ∧ ');
+    const wrap = (inner) => 'just( '+inner+' )';
+    return [
+      {op:'',  ex:'eval-cnf ρ φ'},
+      {op:'≡', ex: wrap(join(clauses.map(cl=>clause(cl,litName)))),
+               cm:'∧ klavzul, ∨ literalov'},
+      {op:'≡', ex: wrap(join(clauses.map(cl=>clause(cl,litSub)))),
+               cm:'vstavi ρ (lookup vrne shranjene vrednosti)'},
+      {op:'≡', ex: wrap(join(clauses.map(cl=>clause(cl,litRed)))),
+               cm:'not false = true, not true = false'},
+      {op:'≡', ex: wrap(join(clauses.map(cl=> boolSpan(cl.some(l=>(l.pol?rho[l.v]:!rho[l.v])))))),
+               cm:'∨ v vsaki klavzuli (vsaj en true)'},
+      {op:'≡', ex:'<span class="jt">just true</span>', cm:'∧ vseh klavzul = true'},
+    ];
+  }
+  function boolSpan(b){ return b ? '<span class="tv">true</span>' : '<span class="fv">false</span>'; }
+
+  function renderProof(rho){
+    const box=$('proof');
+    if(CUR.clauses.every(cl=>cl.every(l=>rho[l.v]!==undefined)) && cnfTrue(CUR.clauses,rho)){
+      const lines=buildProof(CUR.clauses, rho);
+      box.className='proof';
+      box.innerHTML = lines.map(L=>
+        `<div class="ln"><span class="op">${L.op}</span>`+
+        `<span class="ex">${L.ex}</span>`+
+        (L.cm?`&nbsp;&nbsp;<span class="cm">-- ${L.cm}</span>`:'')+`</div>`
+      ).join('')
+      + `<div class="refl">eq = <b>refl</b> : eval-cnf ρ φ ≡ just true&nbsp;&nbsp;<span class="cm">-- izračun se ujema</span></div>`;
+    } else if (STEPS[i] && STEPS[i].done==='unsat'){
+      box.className='proof';
+      box.innerHTML = `<div class="none">unsat ne nese dokaza — to je prazen konstruktor.</div>`
+        + `<div class="cm">Dokaz bi bil ∀ρ. eval-cnf ρ φ ≢ just true, ki ga ta tip ne zahteva (glej Problem 10, popolnost).</div>`;
+    } else {
+      box.className='proof dim';
+      box.innerHTML = `<div class="wait">Dokaz nastane šele na listu iskanja, ko je ρ poln in eval-cnf ρ φ = just true.</div>`
+        + `<div class="cm">Trenutno je ρ delen oz. formula še ni dokazano true, zato dokaza (še) ni.</div>`;
+    }
+  }
+
+  let CUR=null, STEPS=[], i=0, timer=null;
+
+  const $=id=>document.getElementById(id);
+  function renderClauses(clauses, rho, focus){
+    const box=$('clauses'); box.innerHTML='';
+    clauses.forEach((cl,ci)=>{
+      const sat=cl.some(l=>evalLitView(rho,l)==='t');
+      const conf=cl.every(l=>evalLitView(rho,l)==='f');
+      const div=document.createElement('div');
+      div.className='clause'+(sat?' satC':conf?' confC':'');
+      cl.forEach((l,li)=>{
+        if(li>0){const o=document.createElement('span');o.className='orop';o.textContent='∨';div.appendChild(o);}
+        const s=document.createElement('span');
+        const st=evalLitView(rho,l);
+        s.className='lt '+st+(l.v===focus?' focus':'');
+        s.textContent=litStr(l);
+        div.appendChild(s);
+      });
+      const lbl=document.createElement('span');lbl.className='lbl';
+      lbl.textContent= sat?'zadovoljena':conf?'KONFLIKT':'odprta';
+      div.appendChild(lbl);
+      box.appendChild(div);
+    });
+  }
+  function renderRho(rho){
+    const box=$('rho'); box.innerHTML='';
+    const keys=Object.keys(rho).map(Number).sort((a,b)=>a-b);
+    if(keys.length===0){const e=document.createElement('span');e.className='empty';e.textContent='∅ (prazno)';box.appendChild(e);return;}
+    keys.forEach(k=>{const c=document.createElement('span');
+      c.className='vchip '+(rho[k]?'t':'f'); c.textContent=`x${k} = ${rho[k]}`; box.appendChild(c);});
+  }
+  function render(){
+    const st=STEPS[i];
+    $('phase').className='pchip '+st.phase;
+    $('phase').textContent={var:'spremenljivke',conf:'konflikt',pure:'pure literal',
+      search:'iskanje',sat:'SAT',unsat:'UNSAT'}[st.phase]||st.phase;
+    $('fn').textContent=st.fn;
+    $('msg').textContent=st.msg;
+    renderRho(st.rho);
+    renderClauses(CUR.clauses, st.rho, st.focus);
+    renderProof(st.rho);
+    $('count').textContent=`${i+1} / ${STEPS.length}`;
+    const v=$('verdict');
+    if(st.done){ v.className='verdict show '+(st.done==='sat'?'satV':'unsatV');
+      v.textContent= st.done==='sat'?'⇒ sat ρ eq':'⇒ unsat'; }
+    else v.className='verdict';
+    $('btnPrev').disabled=(i===0);
+    $('btnNext').disabled=(i===STEPS.length-1);
+  }
+  function load(idx){
+    stop();
+    CUR=EXAMPLES[idx]; STEPS=solve(CUR.clauses); i=0;
+    [...$('picker').children].forEach((b,k)=>b.classList.toggle('active',k===idx));
+    render();
+  }
+  function step(d){ i=Math.min(STEPS.length-1,Math.max(0,i+d)); render();
+    if(i===STEPS.length-1) stop(); }
+  function play(){ if(timer)return; $('btnPlay').textContent='⏸';
+    timer=setInterval(()=>{ if(i>=STEPS.length-1){stop();return;} step(1); }, +$('speed').value); }
+  function stop(){ if(timer){clearInterval(timer);timer=null;} $('btnPlay').textContent='▶'; }
+
+  // wire up
+  EXAMPLES.forEach((ex,idx)=>{const b=document.createElement('button');
+    b.textContent=ex.name; b.onclick=()=>load(idx); $('picker').appendChild(b);});
+  $('btnReset').onclick=()=>{stop();i=0;render();};
+  $('btnPrev').onclick=()=>{stop();step(-1);};
+  $('btnNext').onclick=()=>{stop();step(1);};
+  $('btnPlay').onclick=()=>{ timer?stop():play(); };
+  $('speed').oninput=()=>{ if(timer){stop();play();} };
+  load(0);
+})();
+</script>
+</body>
+</html>

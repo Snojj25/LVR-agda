@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Problem 12 — SAT za Formula</title>
+<style>
+  :root{--bg:#0f1117;--panel:#171a23;--panel2:#1d212c;--ink:#e6e9ef;--muted:#9aa3b2;
+    --line:#2a2f3a;--accent:#7aa2f7;--green:#9ece6a;--red:#f7768e;--yellow:#e0af68;
+    --purple:#bb9af7;--cyan:#7dcfff;
+    --mono:"SFMono-Regular",ui-monospace,Menlo,Consolas,monospace}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:960px;margin:0 auto;padding:28px 18px 60px}
+  h1{font-size:24px;margin:0 0 6px}
+  .sub{color:var(--muted);margin:0 0 20px}
+  a{color:var(--accent)}
+  .live{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
+  .picker{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+  .picker button{cursor:pointer;font:inherit;font-size:13px;background:var(--panel2);
+    border:1px solid var(--line);border-radius:8px;padding:7px 12px;color:var(--ink)}
+  .picker button.on{border-color:var(--accent);color:var(--accent)}
+  .pipe{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 18px;font-family:var(--mono);font-size:13px}
+  .pipe .st{padding:6px 10px;border-radius:8px;border:1px solid var(--line);color:var(--muted)}
+  .pipe .st.on{border-color:var(--accent);color:var(--accent);background:#1a2438}
+  .pipe .arr{color:var(--muted)}
+  .ctrl{display:flex;gap:8px;margin:0 0 14px}
+  .ctrl button{cursor:pointer;font:inherit;background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;padding:7px 12px;color:var(--ink)}
+  .ctrl button:disabled{opacity:.4}
+  .panel{border:1px solid var(--line);border-radius:10px;padding:14px;background:var(--panel2);
+    font-family:var(--mono);font-size:13px;line-height:1.65;min-height:120px}
+  .panel .lbl{color:var(--muted);font-size:11px;text-transform:uppercase;margin:0 0 8px;font-family:inherit}
+  .g{color:var(--green)} .r{color:var(--red)} .y{color:var(--yellow)}
+  .proof{margin-top:14px;padding:12px;border-left:2px solid var(--line);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Problem 12 — cevovod Formula → SAT</h1>
+  <p class="sub">to-nnf → to-cnf → sat? → eval (dokaz na Formuli) ·
+    <a href="12-formula-sat.md">12-formula-sat.md</a> ·
+    <a href="problem9-visual.html">Problem 9</a></p>
+
+  <div class="live">
+    <div class="picker" id="picker"></div>
+    <div class="pipe" id="pipe"></div>
+    <div class="ctrl">
+      <button id="prev">◀</button>
+      <button id="next">▶</button>
+      <button id="reset">⏮</button>
+    </div>
+    <div class="panel" id="panel"></div>
+    <div class="proof" id="proof"></div>
+  </div>
+</div>
+<script>
+const lit=(v,pol)=>({k:'lit',v,pol});
+const andf=(a,b)=>({k:'andf',a,b});
+const varf=v=>({k:'var',v});
+const andn=(a,b)=>({k:'and',a,b});
+
+const EX=[
+  {name:'x₀ ∧ x₁', formula:andf(varf(0),varf(1)),
+   nnf:andn(lit(0,true),lit(1,true)), expectSat:true},
+  {name:'x₀ ∧ ¬x₀', formula:{k:'andf',a:varf(0),b:{k:'not',x:varf(0)}},
+   nnf:andn(lit(0,true),lit(0,false)), expectSat:false},
+];
+
+const STAGES=['Formula','to-nnf','to-cnf','sat?','eval ρ φ','FormulaSat'];
+
+function nnfStr(n){
+  if(n.k==='lit') return (n.pol?'':'¬')+'x'+n.v;
+  return '('+nnfStr(n.a)+' '+(n.k==='and'?'∧n':'∨n')+' '+nnfStr(n.b)+')';
+}
+function formulaStr(f){
+  if(f.k==='var') return 'var '+f.v;
+  if(f.k==='not') return '¬f ('+formulaStr(f.x)+')';
+  return '('+formulaStr(f.a)+' ∧f '+formulaStr(f.b)+')';
+}
+
+// poenostavljen SAT za demo (samo za x0,x1 liste)
+function demoSat(nnf){
+  if(nnf.k==='lit') return {[nnf.v]: nnf.pol};
+  const a=demoSat(nnf.a), b=demoSat(nnf.b);
+  if(!a||!b) return null;
+  return Object.assign({},a,b);
+}
+function evalFormula(f, rho){
+  if(f.k==='var') return rho[f.v];
+  if(f.k==='not'){ const v=evalFormula(f.x,rho); return v===undefined?undefined:!v; }
+  const a=evalFormula(f.a,rho), b=evalFormula(f.b,rho);
+  if(a===undefined||b===undefined) return undefined;
+  return a&&b;
+}
+
+function buildSteps(ex){
+  const steps=[];
+  steps.push({stage:0, text:`φ = ${formulaStr(ex.formula)}`});
+  steps.push({stage:1, text:`to-nnf φ = ${nnfStr(ex.nnf)}`});
+  steps.push({stage:2, text:`to-cnf (Tseytin) → CNF z pomožnimi xᵢ\n(primer: koren + klavzule, glej problem11-visual.html)`});
+  const rho=demoSat(ex.nnf);
+  if(!rho && ex.expectSat){
+    steps.push({stage:3, text:`sat? … → <span class="r">unsat</span> (demo)`});
+    steps.push({stage:4, text:`—`});
+    steps.push({stage:5, text:`<span class="r">unsat</span> : FormulaSat φ`});
+    return steps;
+  }
+  if(!ex.expectSat){
+    steps.push({stage:3, text:`sat? (to-cnf …) → <span class="r">unsat</span>`});
+    steps.push({stage:4, text:`eval ρ φ — ni potrebe`});
+    steps.push({stage:5, text:`<span class="r">unsat</span> : FormulaSat φ`});
+    return steps;
+  }
+  const rhoStr=Object.entries(rho).map(([k,v])=>`(${k}, ${v})`).join(' ∷ ');
+  steps.push({stage:3, text:`sat? → <span class="g">sat ρ _</span>  (dokaz na CNF)\nρ ≈ ${rhoStr} []`});
+  const ev=evalFormula(ex.formula, rho);
+  steps.push({stage:4, text:`eval ρ φ = <span class="g">just true</span>  (ponovna preverba!)`});
+  steps.push({stage:5, text:`<span class="g">sat ρ eq</span> : FormulaSat φ\n\neq : eval ρ φ ≡ just true  →  <b>refl</b> (dokaz na originalni Formuli)`});
+  return steps;
+}
+
+let STEPS=[], i=0;
+const pipe=document.getElementById('pipe');
+STAGES.forEach((s,idx)=>{
+  const d=document.createElement('span'); d.className='st'; d.dataset.i=idx; d.textContent=s;
+  pipe.appendChild(d);
+  if(idx<STAGES.length-1){const a=document.createElement('span');a.className='arr';a.textContent='→';pipe.appendChild(a);}
+});
+
+function render(){
+  const st=STEPS[i];
+  [...pipe.querySelectorAll('.st')].forEach(el=>{
+    el.classList.toggle('on', +el.dataset.i===st.stage);
+  });
+  document.getElementById('panel').innerHTML='<div class="lbl">'+STAGES[st.stage]+'</div>'+st.text;
+  const pr=document.getElementById('proof');
+  if(st.stage>=5 && st.text.includes('sat ρ')){
+    pr.innerHTML='<b>Dokaz v tipu:</b> <code>FormulaSat</code> zahteva <code>eval ρ φ ≡ just true</code>. '
+      +'Vrednost <code>eq</code> dobimo iz <code>with eval ρ φ in eq</code> — enako kot pri Problem 9/10.';
+  } else if(st.stage>=5 && st.text.includes('unsat')){
+    pr.innerHTML='<b>Brez dokaza</b> — konstruktor <code>unsat</code> nima polja za dokaz.';
+  } else pr.innerHTML='';
+  document.getElementById('prev').disabled=i===0;
+  document.getElementById('next').disabled=i===STEPS.length-1;
+}
+
+const picker=document.getElementById('picker');
+function load(idx){
+  STEPS=buildSteps(EX[idx]); i=0;
+  [...picker.children].forEach((b,j)=>b.classList.toggle('on',j===idx));
+  render();
+}
+EX.forEach((e,idx)=>{const b=document.createElement('button');b.textContent=e.name;
+  b.onclick=()=>load(idx);picker.appendChild(b);});
+document.getElementById('prev').onclick=()=>{if(i>0){i--;render();}};
+document.getElementById('next').onclick=()=>{if(i<STEPS.length-1){i++;render();}};
+document.getElementById('reset').onclick=()=>{i=0;render();};
+load(0);
+</script>
+</body>
+</html>
