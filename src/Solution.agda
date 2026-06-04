@@ -191,16 +191,11 @@ eval-cnf ρ (d ∧c φ)  with eval-disjunct ρ d | eval-cnf ρ φ
 ------------------------------------------------------------
 -- Problem 9. SAT-solver za CNF (DPLL)
 --
--- Vodilo (4 faze, glej oznake spodaj):
---   spremenljivke  — pobere indekse, na katerih bomo prirejali
---   konflikt       — zazna klavzulo, ki je že v celoti false → rez veje
---   pure literal   — spremenljivka z eno samo polariteto → fiksna vrednost
---   iskanje        — sat-search / decide / try-assign (cepitev)
---
--- Formule ne spreminjamo; ρ samo dograjujemo in režemo konfliktne veje,
--- zato list iskanja le pokliče eval-cnf in dokaz `sat ρ p` pade ven sam.
+-- na kratko: spremenljivke (kje prirejamo) → konflikt → pure literal → iskanje
+-- φ ne spreminajmo!! samo ρ in rezemo veje ce je klavzula ze false
+-- na koncu eval-cnf in eq gre v sat ρ eq (problem 10)
 
--- spremenljivke ---------------------------------------------
+-- spremenljivke
 lit-var : Literal → ℕ
 lit-var (pos n) = n
 lit-var (neg n) = n
@@ -213,7 +208,7 @@ cnf-vars : CNF → List ℕ
 cnf-vars (dis d)   = dis-vars d
 cnf-vars (d ∧c φ)  = dis-vars d ++ cnf-vars φ
 
--- konflikt (rezanje vej) ------------------------------------
+-- konflikt / unit propagation (nekako)
 lit-false? : Assignment → Literal → Bool
 lit-false? ρ ℓ with eval-lit ρ ℓ
 ... | just false = true
@@ -227,7 +222,7 @@ cnf-conflict? : Assignment → CNF → Bool            -- katera koli klavzula?
 cnf-conflict? ρ (dis d)  = clause-conflict? ρ d
 cnf-conflict? ρ (d ∧c φ) = clause-conflict? ρ d or cnf-conflict? ρ φ
 
--- pure literal ----------------------------------------------
+-- pure literal
 pos-occ? : ℕ → Literal → Bool
 pos-occ? v (pos n) with v ≟ n
 ... | yes _ = true
@@ -262,7 +257,7 @@ pure-value v φ with cnf-pos? v φ | cnf-neg? v φ
 ... | false | true  = just false
 ... | _     | _     = nothing
 
--- iskanje (splitting) ---------------------------------------
+-- iskanje - splitting
 data SatResult (φ : CNF) : Set where
   sat   : (ρ : Assignment) → eval-cnf ρ φ ≡ just true → SatResult φ
   unsat : SatResult φ
@@ -293,76 +288,65 @@ sat? φ = sat-search (cnf-vars φ) empty φ
 
 
 ------------------------------------------------------------
--- Problem 10. Pravilnost SAT-solverja
+-- Problem 10. Correctness of the SAT solver (soundness + completeness)
 --
--- Pravilnost = zdravost + popolnost. Samo tukaj imamo daljše komentarje,
--- ker moramo razložiti, zakaj popolnosti NE dokazujemo do konca.
+-- Pri tem problemu je vec komentarjev: moramo formalno razloziti soundness
+-- in zakaj completeness v tej datoteki se ni dokazana do konca.
 
--- zdravost --------------------------------------------------
--- Če solver vrne `sat ρ p`, ρ res drži. To NI treba veliko dokazovati:
--- konstruktor `sat` v Problem 9 že zahteva dokaz `p : eval-cnf ρ φ ≡ just true`.
--- Na listu iskanja dobimo `eq` iz `with eval-cnf ρ φ in eq` in podamo v `sat ρ eq`.
+-- soundness -------------------------------------------------
+-- Soundness: ce `sat? φ` vrne `sat ρ p`, potem ρ res zadovolij φ.
+-- To sledi iz dizajna `SatResult` (Problem 9): konstruktor `sat` zahteva
+--   p : eval-cnf ρ φ ≡ just true.
+-- Na listu iskanja: `sat-search [] ρ φ with eval-cnf ρ φ in eq` → `sat ρ eq`.
+-- Lema spodaj samo izlusci dokaz iz rezultata (za Problem 10 v porocilu).
 
 sat?-sound : ∀ {φ ρ p} → sat? φ ≡ sat ρ p → eval-cnf ρ φ ≡ just true
 sat?-sound {p = p} _ = p
 
--- popolnost — zakaj ne deluje (poskus) ----------------------
+-- completeness
 --
--- Kaj bi radi dokazali:
+-- Completeness pomeni: solver ne zamudi obstojece resitve in ne vrne unsat
+--   ce model obstaja; ter ne laze z unsat ko modela ni.
 --
---   (1) Če obstaja ρ, za katerega eval-cnf ρ φ ≡ just true,
---       potem sat? φ vrne sat (ne unsat) — solver ne zamudi rešitve.
---
---   (2) Če za noben ρ formula ni just true,
---       potem sat? φ vrne unsat — solver ne laže, ko reče "ni rešitve".
---
--- V Agdi bi to napisali približno tako (en od dveh ekvivalentnih oblik):
---
+-- Formalno (cilj, se ni dokazan v celoti v tej datoteki):
 --   sat?-complete₁ : ∀ {φ ρ} → eval-cnf ρ φ ≡ just true
 --                  → sat? φ ≡ sat ρ _
---
 --   sat?-complete₂ : ∀ {φ} → (∀ ρ → eval-cnf ρ φ ≢ just true)
 --                  → sat? φ ≡ unsat
 --
--- Zakaj tega NE moremo enostavno dokazati:
+-- Zakaj je to tezje kot soundness:
+--   pri `sat ρ p` je dokaz p ze v konstruktorju. pri `unsat` tip `SatResult`
+-- ne nosi dokaza "formula je res nezadovoljiva" — iz same definicije tipa
+--   complete₂ ne mores dobiti brez dodatne argumentacije.
 --
---   A) Konstruktor `unsat` nima dokaza.
---      Pri `sat ρ p` Agda ve, da je formula res true pod ρ (dokaz p).
---      Pri `unsat` tip NE pravi "za vse ρ eval-cnf ρ φ ≢ just true".
---      Zato iz same definicije SatResult ne moreš izpeljati (2).
+-- Za complete₁ bi bila glavna ideja: indukcija na `sat-search` / `decide` /
+-- `try-assign`. Vsak korak DPLL bi zahteval svojo pod-lemo (insert + eval-cnf):
+--   preskok v, ki je ze v ρ (dvojnik na cnf-vars)
+--   pure literal — ohrani obstojeci satisfying assignment
+--   zgodnji konflikt — nobena razsiritev ne more popraviti klavzule
+--   cepitev — ce true veja ne uspe, obstaja resitev z v ↦ false
+-- V okviru te naloge teh lem nismo razvili do konca.
 --
---   B) Dokaz (1) bi bil velika indukcija na sat-search / decide / try-assign.
---      Morali bi za vsak korak DPLL pokazati: če obstaja ρ*, ki še razširja
---      trenutno delno ρ in zadovolji φ, potem iskanje na tej veji ne vrne
---      napačnega unsat. Primeri:
---        - preskok spremenljivke, ki je že v ρ (dvojnik v cnf-vars);
---        - pure literal: ali res ne uničimo druge rešitve?
---        - konflikt: ali res ni razširitve ρ, ki bi rešila klavzulo?
---        - cepitev: če true ne dela, mora obstajati rešitev z false.
---      Vsak podprimer zahteva leme o eval-cnf in insert — dolgo in naporno.
+-- Dodatno: `sat-search` obisce samo `cnf-vars φ`. Za completeness bi morali
+-- dokazati da seznam pokrije vse indekse ki vplivajo na eval-cnf
+-- (duplikati so ok, manjkajoci ne).
 --
---   C) sat-search obišče samo spremenljivke iz cnf-vars φ.
---      Če bi katera spremenljivka, ki vpliva na eval-cnf, manjkala na seznamu,
---      solver bi lahko vrnil unsat, čeprav rešitev obstaja. Morali bi dokazati
---      popolnost cnf-vars (duplikati so OK, manjkajoči indeks pa ne).
+-- `Assignment` je delna lista — preverjene so le veje drevesa iskanja, ne pa
+--   vseh moznih ρ v abstraktnem smislu.
 --
---   D) Assignment je delna lista (lookup vrne nothing za nedoločene).
---      "Preverili smo vse veje iskanja" v kodi ni isto kot
---      "za vsak ρ : Assignment v matematičnem smislu". Agda ne ve, da smo
---      pokrili vse možne razširitve ρ, razen če to eksplicitno induciramo.
+-- Delni okvir indukcije (zapis za porocilo):
+--   sat-search-complete :
+--     ∀ vs ρ {φ} (p : eval-cnf ρ φ ≡ just true)
+--     → sat-search vs ρ φ ≡ sat ρ _
+--   bazni korak [] : iz p sledi `sat ρ eq`  — to deluje
+--   korak (v ∷ vs) : razclenitev `lookup v ρ`
+--      just _  → preskok (potrebna lema: enakovrednost ρ)
+--      nothing → decide / try-assign  — tukaj se razcepi na pure, konflikt,
+--                split; brez pomoznih lem o insert se dokaz ne zakljuci
 --
--- Kje bi indukcija obtičala (okvir, ne dokončan dokaz):
---
---   sat-search-complete : vs ρ p → sat-search vs ρ φ ≡ sat ρ _
---   bazni []     : ko je vs=[], eval-cnf ρ φ ≡ just true → sat ρ p  (to gre)
---   korak (v∷vs) : lookup v ρ
---     · just _  → preskok (potrebna lema: ρ in ρ z v že določen dasta enako)
---     · nothing → decide → try-assign / cepitev  ← tukaj se razcepi na veliko
---       primerov; brez pomožnih lem o insert in eval-cnf se ne zaključi
---
--- Kaj smo vseeno naredili spodaj: `sat-from-proof` — če ρ in dokaz p ŽE imaš,
--- lahko ročno zgradiš SatResult. To NI popolnost solverja (ne pravi, da bo
--- sat? našel ta ρ), samo da konstruktor `sat` ustreza tipu, ko dokaz poznaš.
+-- `sat-from-proof` spodaj: ce ρ in dokaz p ze poznamo, zgradimo `SatResult`.
+--   To je skladnost konstruktorja `sat` s tipom, ne completeness od `sat?`
+--   (ne trdi da bo solver sam nasel ta ρ).
 
 sat-from-proof : ∀ {φ} {ρ : Assignment} (p : eval-cnf ρ φ ≡ just true) → SatResult φ
 sat-from-proof {ρ = ρ} p = sat ρ p
@@ -371,13 +355,10 @@ sat-from-proof {ρ = ρ} p = sat ρ p
 ------------------------------------------------------------
 -- Problem 11. NNF → CNF (Tseytin)
 --
--- Vodilo:
---   pomožno    — flip-lit, max-var, clauses-to-cnf
---   tseytin    — na vsakem vozlišču xᵢ ↔ podformula (3 klavzule na ∧/∨)
---   izhod      — to-cnf: koren kot literal + zbrane klavzule
--- (equisatisfiabilnost formalno ne dokazujemo — glej notes/11-tseytin.md)
+-- za vsako notranje vozlisce nova spremenljivka + 3 klavzule (and/or)
+-- listi ostanejo literali, equisat ne dokazujemo
 
--- pomožno ---------------------------------------------------
+-- pomožno (flip-lit, max-var, ...)
 flip-lit : Literal → Literal
 flip-lit (pos n) = neg n
 flip-lit (neg n) = pos n
@@ -395,7 +376,7 @@ clauses-to-cnf : Disjunct → List Disjunct → CNF
 clauses-to-cnf d []        = dis d
 clauses-to-cnf d (c ∷ cs)  = d ∧c clauses-to-cnf c cs
 
--- tseytin ---------------------------------------------------
+-- tseytin - rekurzija
 tseytin : NNF → ℕ → ℕ × Literal × List Disjunct
 tseytin (lit ℓ)  n = n , ℓ , []
 tseytin (a ∧n b) n with tseytin a n
@@ -415,7 +396,7 @@ tseytin (a ∨n b) n with tseytin a n
         ∷ (flip-lit lb ∨d lit (pos n₂))
         ∷ (cs-a ++ cs-b)
 
--- izhod -----------------------------------------------------
+-- to-cnf
 to-cnf : NNF → CNF
 to-cnf φ with tseytin φ (suc (max-var φ))
 ... | _ , root , cs = clauses-to-cnf (lit root) cs
@@ -424,18 +405,16 @@ to-cnf φ with tseytin φ (suc (max-var φ))
 ------------------------------------------------------------
 -- Problem 12. SAT za Formula
 --
--- Vodilo:
---   tip        — FormulaSat (dokaz na `eval`, ne na CNF)
---   cevovod    — to-nnf → to-cnf → sat? → ponovni eval
---   util       — sound lema, solve (brez dokaza)
--- (vizualizacija: notes/problem12-visual.html)
+-- Formula → to-nnf → to-cnf → sat? → se enkrat eval na originalu
+-- dokaz mora biti eval ρ φ ≡ just true (ne eval-cnf), tseyitina ne dokazujemo
+-- zato ponovno preverimo ρ na formuli
 
--- tip -------------------------------------------------------
+-- FormulaSat tip
 data FormulaSat (φ : Formula) : Set where
   sat   : (ρ : Assignment) → eval ρ φ ≡ just true → FormulaSat φ
   unsat : FormulaSat φ
 
--- cevovod ---------------------------------------------------
+-- sat-formula?
 sat-formula? : (φ : Formula) → FormulaSat φ
 sat-formula? φ with sat? (to-cnf (to-nnf φ))
 ... | unsat   = unsat
@@ -443,7 +422,7 @@ sat-formula? φ with sat? (to-cnf (to-nnf φ))
 ...   | just true = sat ρ eq
 ...   | _         = unsat
 
--- util ------------------------------------------------------
+-- sound + solve (brez dokaza v solve)
 sat-formula?-sound : ∀ {φ ρ p} → sat-formula? φ ≡ sat ρ p → eval ρ φ ≡ just true
 sat-formula?-sound {p = p} _ = p
 
