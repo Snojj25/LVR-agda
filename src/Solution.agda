@@ -1,7 +1,5 @@
 module Solution where
 
--- Imports
-
 open import Data.Nat
   using (ℕ; _≟_; _⊔_; suc)
 open import Data.Bool
@@ -22,8 +20,8 @@ open import Relation.Nullary
 open import Relation.Binary.PropositionalEquality
   using (_≡_; refl)
 
----------------------------------------------------------------------
--- Problem 1: Definiramo Formula type
+
+-- Problem 1: tip Formula
 
 data Formula : Set where
   var  : ℕ → Formula
@@ -35,13 +33,12 @@ infix  9 ¬f_
 infixr 7 _∧f_
 infixr 6 _∨f_
 
----------------------------------------------------------------------
--- Problem 2. Definramo literal, Iz tega sestavimo
--- definicijo NNF (Negation Normal Form)
+
+-- Problem 2: literali in NNF
 
 data Literal : Set where
-  pos : ℕ → Literal     
-  neg : ℕ → Literal     
+  pos : ℕ → Literal
+  neg : ℕ → Literal
 
 data NNF : Set where
   lit  : Literal → NNF
@@ -51,47 +48,46 @@ data NNF : Set where
 infixr 7 _∧n_
 infixr 6 _∨n_
 
----------------------------------------------------------------------
--- Problem 3. Pretvorba Formula → NNF (to-nnf)
--- negacijo "potisnemo" navzdol z De Morganovimi zakoni
--- in ¬¬φ ≡ φ. ne pišemo ene velike to-nnf, ampak dve funkciji:
---   nnf⁺ φ  ≈  pretvori φ    nnf⁻ φ  ≈  pretvori ¬φ
--- Končna funkcija je to-nnf = nnf⁺.
+
+-- Problem 3: pretvorba Formula → NNF
+--
+-- Negacijo potiskamo navzdol z De Morganom in ¬¬φ = φ. Namesto ene velike
+-- funkcije sta dve vzajemno rekurzivni: nnf⁺ prevede φ, nnf⁻ prevede ¬φ.
 
 nnf⁺ : Formula → NNF
 nnf⁻ : Formula → NNF
 
-nnf⁺ (var n)   = lit (pos n)
-nnf⁺ (¬f φ)    = nnf⁻ φ
-nnf⁺ (a ∧f b)  = nnf⁺ a ∧n nnf⁺ b
-nnf⁺ (a ∨f b)  = nnf⁺ a ∨n nnf⁺ b
+nnf⁺ (var n)  = lit (pos n)
+nnf⁺ (¬f φ)   = nnf⁻ φ
+nnf⁺ (a ∧f b) = nnf⁺ a ∧n nnf⁺ b
+nnf⁺ (a ∨f b) = nnf⁺ a ∨n nnf⁺ b
 
-nnf⁻ (var n)   = lit (neg n)
-nnf⁻ (¬f φ)    = nnf⁺ φ               -- dvojna negacija
-nnf⁻ (a ∧f b)  = nnf⁻ a ∨n nnf⁻ b       -- De Morgan: ¬(a∧b)
-nnf⁻ (a ∨f b)  = nnf⁻ a ∧n nnf⁻ b        -- De Morgan: ¬(a∨b)
+nnf⁻ (var n)  = lit (neg n)
+nnf⁻ (¬f φ)   = nnf⁺ φ   -- dvojna negacija
+nnf⁻ (a ∧f b) = nnf⁻ a ∨n nnf⁻ b   -- De Morgan
+nnf⁻ (a ∨f b) = nnf⁻ a ∧n nnf⁻ b
 
 to-nnf : Formula → NNF
 to-nnf = nnf⁺
 
----------------------------------------------------------------------
--- Problem 4. 
+
+-- Problem 4: prirejanja (Assignment)
+--
+-- Prirejanje je preprosto seznam parov (spremenljivka, vrednost). Članstvo
+-- ključa definiramo rekurzivno kot Set, da lahko iz dokaza članstva potem
+-- preberemo shranjeno vrednost.
 
 infix 4 _∈ᴬ_
 
--- "rekurzivna definicija" za _∈ᴬ_ s pomočjo sum type 
--- (kaj pomeni biti v Listu (ℕ × Bool)?)
 _∈ᴬ_ : ℕ → List (ℕ × Bool) → Set
 k ∈ᴬ []               = ⊥
 k ∈ᴬ ((k′ , _) ∷ kvs) = (k ≡ k′) ⊎ (k ∈ᴬ kvs)
 
--- Iz dokaza članstva preberi shranjen true/false
 get : {k : ℕ} {kvs : List (ℕ × Bool)} → k ∈ᴬ kvs → Bool
-get {kvs = []}              ()
-get {kvs = (_ , v) ∷ _}     (inj₁ _) = v      -- najden na začetku
-get {kvs = (_ , _) ∷ kvs}   (inj₂ p) = get p  -- najden v repu
+get {kvs = []} ()
+get {kvs = (_ , v) ∷ _}   (inj₁ _) = v
+get {kvs = (_ , _) ∷ kvs} (inj₂ p) = get p
 
--- Odloči članstvo in vrni dokaz (yes) ali dokaz da ni (no)
 _∈ᴬ?_ : (k : ℕ) → (kvs : List (ℕ × Bool)) → Dec (k ∈ᴬ kvs)
 k ∈ᴬ? []                = no λ ()
 k ∈ᴬ? ((k′ , _) ∷ kvs)  with k ≟ k′
@@ -101,28 +97,28 @@ k ∈ᴬ? ((k′ , _) ∷ kvs)  with k ≟ k′
 ...   | no  k∉kvs = no λ { (inj₁ p) → k≢k′ p
                          ; (inj₂ p) → k∉kvs p }
 
--- Assignment = seznam parov (številka spremenljivke, true/false)
 Assignment : Set
 Assignment = List (ℕ × Bool)
 
 empty : Assignment
 empty = []
 
--- lookup: če je k v ρ, just vrednost; sicer nothing
 lookup : ℕ → Assignment → Maybe Bool
 lookup k ρ with k ∈ᴬ? ρ
 ... | yes p = just (get p)
 ... | no  _ = nothing
 
--- insert: posodobi obstoječi ključ ali dodaj na konec
+-- posodobi obstoječi ključ ali dodaj na konec
 insert : ℕ → Bool → Assignment → Assignment
 insert k v []                = (k , v) ∷ []
 insert k v ((k′ , v′) ∷ ρ)   with k ≟ k′
 ... | yes _ = (k , v) ∷ ρ
 ... | no  _ = (k′ , v′) ∷ insert k v ρ
 
----------------------------------------------------------------------
--- Problem 5.  Evaluating a Formula
+
+-- Problem 5: evalvacija formule
+--
+-- nothing pomeni, da kakšna spremenljivka manjka v ρ.
 
 eval : Assignment → Formula → Maybe Bool
 eval ρ (var n)   = lookup n ρ
@@ -137,8 +133,7 @@ eval ρ (a ∨f b)  with eval ρ a | eval ρ b
 ... | _      | _      = nothing
 
 
----------------------------------------------------------------------
--- Problem 6.  Evaluating an NNF
+-- Problem 6: evalvacija NNF
 
 eval-lit : Assignment → Literal → Maybe Bool
 eval-lit ρ (pos n) = lookup n ρ
@@ -156,8 +151,7 @@ eval-nnf ρ (a ∨n b)  with eval-nnf ρ a | eval-nnf ρ b
 ... | _      | _      = nothing
 
 
-------------------------------------------------------------
--- Problem 7.  Definiramo Disjunct in CNF
+-- Problem 7: Disjunct in CNF
 
 data Disjunct : Set where
   lit  : Literal → Disjunct
@@ -171,9 +165,7 @@ infixr 6 _∨d_
 infixr 7 _∧c_
 
 
-------------------------------------------------------------
--- Problem 8.  eval-disjunct in eval-cnf
-
+-- Problem 8: eval-disjunct in eval-cnf
 
 eval-disjunct : Assignment → Disjunct → Maybe Bool
 eval-disjunct ρ (lit ℓ)   = eval-lit ρ ℓ
@@ -189,7 +181,7 @@ eval-cnf ρ (d ∧c φ)  with eval-disjunct ρ d | eval-cnf ρ φ
 
 
 ------------------------------------------------------------
--- Problem 9. SAT-solver za CNF (DPLL)
+-- Problem 9: SAT solver za CNF (DPLL)
 --
 -- na kratko: spremenljivke (kje prirejamo) → konflikt → pure literal → iskanje
 -- φ ne spreminajmo!! samo ρ in rezemo veje ce je klavzula ze false
@@ -214,11 +206,11 @@ lit-false? ρ ℓ with eval-lit ρ ℓ
 ... | just false = true
 ... | _          = false
 
-clause-conflict? : Assignment → Disjunct → Bool   -- vsi literali false?
+clause-conflict? : Assignment → Disjunct → Bool
 clause-conflict? ρ (lit ℓ)  = lit-false? ρ ℓ
 clause-conflict? ρ (ℓ ∨d d) = lit-false? ρ ℓ and clause-conflict? ρ d
 
-cnf-conflict? : Assignment → CNF → Bool            -- katera koli klavzula?
+cnf-conflict? : Assignment → CNF → Bool
 cnf-conflict? ρ (dis d)  = clause-conflict? ρ d
 cnf-conflict? ρ (d ∧c φ) = clause-conflict? ρ d or cnf-conflict? ρ φ
 
@@ -251,7 +243,7 @@ cnf-neg? : ℕ → CNF → Bool
 cnf-neg? v (dis d)  = dis-neg? v d
 cnf-neg? v (d ∧c φ) = dis-neg? v d or cnf-neg? v φ
 
-pure-value : ℕ → CNF → Maybe Bool                  -- samo pos→true, samo neg→false
+pure-value : ℕ → CNF → Maybe Bool
 pure-value v φ with cnf-pos? v φ | cnf-neg? v φ
 ... | true  | false = just true
 ... | false | true  = just false
@@ -270,17 +262,17 @@ sat-search []       ρ φ with eval-cnf ρ φ in eq
 ... | just true = sat ρ eq
 ... | _         = unsat
 sat-search (v ∷ vs) ρ φ with lookup v ρ
-... | just _  = sat-search vs ρ φ                  -- že prirejen → preskoči
+... | just _  = sat-search vs ρ φ   -- v je že prirejen (dvojnik v cnf-vars)
 ... | nothing = decide v vs ρ φ
 
 decide v vs ρ φ with pure-value v φ
-... | just b  = try-assign v b vs ρ φ              -- pure → ena veja
-... | nothing with try-assign v true vs ρ φ        -- sicer cepi: true, pa false
+... | just b  = try-assign v b vs ρ φ
+... | nothing with try-assign v true vs ρ φ
 ...   | sat ρ′ p = sat ρ′ p
 ...   | unsat    = try-assign v false vs ρ φ
 
 try-assign v b vs ρ φ with cnf-conflict? (insert v b ρ) φ
-... | true  = unsat                                -- konflikt → rez veje
+... | true  = unsat
 ... | false = sat-search vs (insert v b ρ) φ
 
 sat? : (φ : CNF) → SatResult φ
@@ -356,7 +348,7 @@ sat-from-proof {ρ = ρ} p = sat ρ p
 
 
 ------------------------------------------------------------
--- Problem 11. NNF → CNF (Tseytin)
+-- Problem 11: NNF → CNF s Tseytinovo transformacijo
 --
 -- za vsako notranje vozlisce nova spremenljivka + 3 klavzule (and/or)
 -- listi ostanejo literali, equisat ne dokazujemo
@@ -406,7 +398,7 @@ to-cnf φ with tseytin φ (suc (max-var φ))
 
 
 ------------------------------------------------------------
--- Problem 12. SAT za Formula
+-- Problem 12: SAT za Formula
 --
 -- Formula → to-nnf → to-cnf → sat? → se enkrat eval na originalu
 -- dokaz mora biti eval ρ φ ≡ just true (ne eval-cnf), tseyitina ne dokazujemo
